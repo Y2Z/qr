@@ -1,0 +1,2 @@
+# qr
+Print Unicode-friendly QR codes straight in your terminal
