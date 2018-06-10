@@ -6,7 +6,7 @@ PROG   = qr
 LIBS   = -lm -lqrencode
 
 ifeq ($(PREFIX),)
-    PREFIX := /usr
+    PREFIX := /usr/local
 endif
 
 $(PROG):
