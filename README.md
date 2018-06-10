@@ -2,8 +2,6 @@
 
 Print Unicode-friendly QR codes straight in your terminal.
 
-Based on `libqrencode`.
-
 ![qr-snapshot](https://user-images.githubusercontent.com/1392048/38160038-0a03cbf2-3484-11e8-916d-2428085cb0f8.png)
 
 ## Build
@@ -14,9 +12,19 @@ Based on `libqrencode`.
 ## Install
 
     # make install
+or
+
+    $ sudo PREFIX=/usr/local make install
+
+### Usage
+
+    $ qr "Hello"
+or
+
+    $ echo "Hello" | qr
 
 
-## Use
+## Options
 
     Usage: qr [OPTIONS] STRING
       or:  cat FILE | qr [OPTIONS]
@@ -31,14 +39,6 @@ Based on `libqrencode`.
       -p  force colorless output
       -h  print help (this message)
 
-### TL;DR
-
-    $ qr "Hello"
-
-or
-
-    $ echo "Hello" | qr
-
 
 ## Uninstall
 
@@ -49,11 +49,11 @@ or
 
  - [libqrencode](https://github.com/fukuchi/libqrencode)
 
-### Ubuntu and Debian
+### Resolve on Ubuntu or Debian
 
     $ apt-get install libqrencode-dev
 
-### macOS
+### Resolve on macOS
 
     $ brew install qrencode
 
