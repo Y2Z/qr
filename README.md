@@ -21,7 +21,7 @@ or
     $ qr "Hello"
 or
 
-    $ echo "Hello" | qr
+    $ echo -n "Hello" | qr
 
 
 ## Options
