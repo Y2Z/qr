@@ -509,7 +509,7 @@ int main (int argc, char *argv[])
     }
 
     /* enforce colorless output mode for non-terminal environments */
-    if (!isatty(STDIN_FILENO)) {
+    if (!isatty(STDOUT_FILENO)) {
         options.plain = true;
     }
 
