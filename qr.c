@@ -95,6 +95,8 @@ const char *help =
 const char *bom_utf8 = "\xEF\xBB\xBF";
 
 
+void bzero(void *s, size_t n);
+
 void print_help (void)
 {
     printf("%s" EOL, help);
@@ -110,18 +112,8 @@ static inline bool has_bom (const char *string)
     return (strcmp(string, bom_utf8) == 0);
 }
 
-static inline void memzero (void *dest, size_t size)
-{
-    static const char zero = (char)0;
-    volatile unsigned char *dp = (unsigned char *)dest;
-
-    while (size--) {
-        *dp++ = zero;
-    }
-}
-
 char *qr_data_to_text (const unsigned char *data, const char border_width,
-                        const char invert, const char paint, const char large)
+                       const bool invert, const bool paint, const bool large)
 {
     int i = 0;
     int j = 0;
@@ -152,63 +144,63 @@ char *qr_data_to_text (const unsigned char *data, const char border_width,
     if (large) { /* 2 characters per block */
         /* top border */
         for (i = 0; i < border_width; i++) {
-            /* set the palette */
+            /* set palette */
             if (paint) {
                 strcat(text, BGBK_FGWH);
             }
-            /* add blocks */
+            /* add top border blocks */
             for (j = 0; j < l; j++) {
                 strcat(text, blocks[0]);
             }
-            /* reset the palette */
+            /* reset palette */
             if (paint) {
                 strcat(text, BGDF_FGDF);
             }
-            /* newline */
+            /* put newline */
             strcat(text, EOL);
         }
 
-        /* QR code lines */
+        /* left border, data, right border */
         for (i = 0; i < r; i++) {
-            /* set the palette */
+            /* set palette */
             if (paint) {
                 strcat(text, BGBK_FGWH);
             }
-            /* left border */
+            /* add left border blocks */
             for (j = 0; j < border_width; j++) {
                 strcat(text, blocks[0]);
             }
-            /* modules */
+            /* add data blocks */
             for (j = 0; j < r; j++) {
                 strcat(text, blocks[data[i * r + j] & 0x01]);
             }
-            /* right border */
+            /* add right border blocks */
             for (j = 0; j < border_width; j++) {
                 strcat(text, blocks[0]);
             }
-            /* reset the palette */
+            /* reset palette */
             if (paint) {
                 strcat(text, BGDF_FGDF);
             }
-            /* newline */
+            /* put newline */
             strcat(text, EOL);
         }
 
         /* bottom border */
         for (i = 0; i < border_width; i++) {
-            /* set the palette */
+            /* set palette */
             if (paint) {
                 strcat(text, BGBK_FGWH);
             }
-            /* add blocks */
+            /* add bottom border blocks */
             for (j = 0; j < l; j++) {
                 strcat(text, blocks[0]);
             }
-            /* reset the palette */
+            /* reset palette */
             if (paint) {
                 strcat(text, BGDF_FGDF);
             }
-            /* newline */
+            /* put newline */
             strcat(text, EOL);
         }
     } else { /* 1/2 char per block (default size) */
@@ -216,33 +208,33 @@ char *qr_data_to_text (const unsigned char *data, const char border_width,
 
         /* top border */
         for (i = 0; i < border_width - border_leftover; i += 2) {
-            /* set the palette */
+            /* set palette */
             if (paint) {
                 strcat(text, BGBK_FGWH);
             }
-            /* add double-blocks */
+            /* add top border double-blocks */
             for (j = 0; j < l; j++) {
                 strcat(text, double_blocks[0]);
             }
-            /* reset the palette */
+            /* reset palette */
             if (paint) {
                 strcat(text, BGDF_FGDF);
             }
-            /* newline */
+            /* put newline */
             strcat(text, EOL);
         }
 
-        /* QR code lines */
+        /* left border, data, right border */
         for (i = 0 - border_leftover; i < r; i += 2) {
-            /* set the palette */
+            /* set palette */
             if (paint) {
                 strcat(text, BGBK_FGWH);
             }
-            /* left border */
+            /* add left border double-blocks */
             for (j = 0; j < border_width; j++) {
                 strcat(text, double_blocks[0]);
             }
-            /* modules */
+            /* add data double-blocks */
             for (j = 0; j < r; j++) {
                 int first_row = (i < 0);
                 int not_last_row = (i < r-1);
@@ -261,21 +253,21 @@ char *qr_data_to_text (const unsigned char *data, const char border_width,
                     }
                 }
             }
-            /* right border */
+            /* add right border double-blocks */
             for (j = 0; j < border_width; j++) {
                 strcat(text, double_blocks[0]);
             }
-            /* reset the palette */
+            /* reset palette */
             if (paint) {
                 strcat(text, BGDF_FGDF);
             }
-            /* newline */
+            /* put newline */
             strcat(text, EOL);
         }
 
         /* bottom border */
         for (i = 2; i < border_width; i += 2) {
-            /* set the palette */
+            /* set palette */
             if (paint) {
                 strcat(text, BGBK_FGWH);
             }
@@ -283,19 +275,19 @@ char *qr_data_to_text (const unsigned char *data, const char border_width,
             for (j = 0; j < l; j++) {
                 strcat(text, double_blocks[0]);
             }
-            /* reset the palette */
+            /* reset palette */
             if (paint) {
                 strcat(text, BGDF_FGDF);
             }
-            /* newline */
+            /* put newline */
             strcat(text, EOL);
         }
-        /* trailing double-block for the bottom border */
+        /* trailing double-block for bottom border */
         {
-            /* set the palette */
+            /* set palette */
             if (paint) {
                 strcat(text, BGBK_FGWH);
-                /* avoid coloring the last (transparent) double-line */
+                /* avoid coloring last (transparent) double-line */
                 if (!invert) {
                     strcat(text, BG_DF);
                 }
@@ -304,11 +296,11 @@ char *qr_data_to_text (const unsigned char *data, const char border_width,
             for (j = 0; j < l; j++) {
                 strcat(text, double_blocks[(invert) ? 0 : 2]);
             }
-            /* reset the palette */
+            /* reset palette */
             if (paint) {
                 strcat(text, BGDF_FGDF);
             }
-            /* newline */
+            /* put newline */
             strcat(text, EOL);
         }
     }
@@ -396,7 +388,7 @@ int main (int argc, char *argv[])
     };
 
     /* process stdin (if any) */
-    if (!isatty(fileno(stdin))) {
+    if (!isatty(STDIN_FILENO)) {
         ssize_t stdin_read_size = 0;
 
         size_t buffer_size = 0;
@@ -491,10 +483,10 @@ int main (int argc, char *argv[])
         goto cleanup;
     }
 
-    /* generate a QR code */
+    /* generate QR code */
     QRcode *qr;
 
-    /* also ensure that the QR code contains the UTF-8 BOM */
+    /* ensure QR code contains UTF-8 BOM */
     if (has_bom(str)) {
         qr = QRcode_encodeString(str, options.version,
                                  get_qr_ec_level(options.ec_level),
@@ -506,18 +498,18 @@ int main (int argc, char *argv[])
         qr = QRcode_encodeString(str_utf8, options.version,
                                  get_qr_ec_level(options.ec_level),
                                  get_qr_encode_mode(options.encode_mode), true);
-        memzero(str_utf8, strlen(str_utf8));
+        bzero(str_utf8, strlen(str_utf8));
     }
 
-    /* bail out if unable to convert the string into a QR code */
+    /* bail out if unable to successfully execute QRcode_encodeString() */
     if (qr == NULL) {
         print_error("failed to generate QR code");
         ret = 1;
         goto cleanup;
     }
 
-    /* enforce colorless mode for non-terminal output */
-    if (!isatty(1)) {
+    /* enforce colorless output mode for non-terminal environments */
+    if (!isatty(STDOUT_FILENO)) {
         options.plain = true;
     }
 
@@ -525,22 +517,22 @@ int main (int argc, char *argv[])
     char *text = qr_data_to_text(qr->data, options.border,
                                  options.invert, !options.plain, options.large);
 
-    /* print the code */
+    /* output QR code as text */
     if (text) {
         printf("%s", text);
-        memzero(text, strlen(text));
+        bzero(text, strlen(text));
         free(text);
     } else {
         print_error("failed to convert QR code into text");
         ret = 1;
     }
 
-    /* wipe any sensitive data from memory for security reasons */
-    memzero(qr->data, strlen((char *)qr->data));
-    memzero(qr, sizeof(QRcode));
+    /* wipe data from memory for security reasons */
+    bzero(qr->data, strlen((char *)qr->data));
+    bzero(qr, sizeof(QRcode));
     QRcode_free(qr);
 cleanup:
-    memzero(str, strlen(str));
+    bzero(str, strlen(str));
 
     return ret;
 }
