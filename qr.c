@@ -388,7 +388,7 @@ int main (int argc, char *argv[])
     };
 
     /* process stdin (if any) */
-    if (!isatty(fileno(stdin))) {
+    if (!isatty(STDIN_FILENO)) {
         ssize_t stdin_read_size = 0;
 
         size_t buffer_size = 0;
@@ -509,7 +509,7 @@ int main (int argc, char *argv[])
     }
 
     /* enforce colorless mode for non-terminal output */
-    if (!isatty(1)) {
+    if (!isatty(STDIN_FILENO)) {
         options.plain = true;
     }
 
