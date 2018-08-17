@@ -113,7 +113,7 @@ static inline bool has_bom (const char *string)
 }
 
 char *qr_data_to_text (const unsigned char *data, const char border_width,
-                        const char invert, const char paint, const char large)
+                        const bool invert, const bool paint, const bool large)
 {
     int i = 0;
     int j = 0;
