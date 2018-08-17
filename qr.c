@@ -95,6 +95,8 @@ const char *help =
 const char *bom_utf8 = "\xEF\xBB\xBF";
 
 
+void bzero(void *s, size_t n);
+
 void print_help (void)
 {
     printf("%s" EOL, help);
@@ -108,16 +110,6 @@ void print_error (const char *message)
 static inline bool has_bom (const char *string)
 {
     return (strcmp(string, bom_utf8) == 0);
-}
-
-static inline void memzero (void *dest, size_t size)
-{
-    static const char zero = (char)0;
-    volatile unsigned char *dp = (unsigned char *)dest;
-
-    while (size--) {
-        *dp++ = zero;
-    }
 }
 
 char *qr_data_to_text (const unsigned char *data, const char border_width,
@@ -506,7 +498,7 @@ int main (int argc, char *argv[])
         qr = QRcode_encodeString(str_utf8, options.version,
                                  get_qr_ec_level(options.ec_level),
                                  get_qr_encode_mode(options.encode_mode), true);
-        memzero(str_utf8, strlen(str_utf8));
+        bzero(str_utf8, strlen(str_utf8));
     }
 
     /* bail out if unable to convert the string into a QR code */
@@ -528,7 +520,7 @@ int main (int argc, char *argv[])
     /* print the code */
     if (text) {
         printf("%s", text);
-        memzero(text, strlen(text));
+        bzero(text, strlen(text));
         free(text);
     } else {
         print_error("failed to convert QR code into text");
@@ -536,11 +528,11 @@ int main (int argc, char *argv[])
     }
 
     /* wipe any sensitive data from memory for security reasons */
-    memzero(qr->data, strlen((char *)qr->data));
-    memzero(qr, sizeof(QRcode));
+    bzero(qr->data, strlen((char *)qr->data));
+    bzero(qr, sizeof(QRcode));
     QRcode_free(qr);
 cleanup:
-    memzero(str, strlen(str));
+    bzero(str, strlen(str));
 
     return ret;
 }
