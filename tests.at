@@ -1,0 +1,18 @@
+m4_define([AT_PACKAGE_BUGREPORT], [vflyson@uberspace.net])
+m4_define([AT_PACKAGE_STRING], [qr])
+
+AT_INIT
+AT_COLOR_TESTS
+AT_BANNER([QR-Code tests])
+
+AT_SETUP([proper rendering of information with default settings])
+AT_KEYWORDS([qrcode])
+AT_CHECK_UNQUOTED([
+
+for i in $INPUT
+do
+  convert -background black -fill white -font FreeMono -pointsize 9 label:"$(qr $i)" png:- | zbarimg -q png:- | grep -q QR-Code:$i || exit 1
+done
+
+], [0], [], [])
+AT_CLEANUP
