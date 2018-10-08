@@ -41,7 +41,6 @@
 #include <math.h>
 #include <qrencode.h>
 
-
 /* stdin read buffer size */
 #define BUFFER_SIZE 64
 /* block elements */
@@ -62,7 +61,6 @@
 /* newline character(s) */
 #define EOL         "\n"
 
-
 typedef struct {
     char encode_mode;
     int version;
@@ -73,9 +71,8 @@ typedef struct {
     bool plain;
 } Options;
 
-
 /* help screen */
-const char *help =
+const char *help = EOL
     "Usage: qr [OPTIONS] STRING" EOL
     "  or:  cat FILE | qr [OPTIONS]" EOL
     EOL
@@ -94,7 +91,6 @@ const char *help =
 /* Unicode BOMs */
 const char *bom_utf8 = "\xEF\xBB\xBF";
 
-
 void bzero(void *s, size_t n);
 
 void print_help (void)
@@ -102,17 +98,17 @@ void print_help (void)
     printf("%s" EOL, help);
 }
 
-void print_error (const char *message)
+void print_error(const char *message)
 {
-    fprintf(stderr, EOL "Error: %s" EOL EOL, message);
+    fprintf(stderr, EOL "Error: %s" EOL, message);
 }
 
-static inline bool has_bom (const char *string)
+static inline bool has_bom(const char *string)
 {
     return (strcmp(string, bom_utf8) == 0);
 }
 
-char *qr_data_to_text (const unsigned char *data, const char border_width,
+char *qr_data_to_text(const unsigned char *data, const char border_width,
                        const bool invert, const bool paint, const bool large)
 {
     int i = 0;
@@ -308,7 +304,7 @@ char *qr_data_to_text (const unsigned char *data, const char border_width,
     return text;
 }
 
-char get_qr_encode_mode (const char encode_mode)
+char get_qr_encode_mode(const char encode_mode)
 {
     char ret = -1;
 
@@ -336,7 +332,7 @@ char get_qr_encode_mode (const char encode_mode)
     return ret;
 }
 
-char get_qr_ec_level (const char ec_level)
+char get_qr_ec_level(const char ec_level)
 {
     char ret = -1;
 
@@ -369,7 +365,7 @@ char get_qr_ec_level (const char ec_level)
     return ret;
 }
 
-int main (int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     int ret = 0;
     char *str = "";
@@ -449,7 +445,6 @@ int main (int argc, char *argv[])
 
             case 'h':
                 print_help();
-                ret = 1;
                 goto cleanup;
         }
     }
