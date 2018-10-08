@@ -8,11 +8,75 @@ AT_BANNER([QR-Code tests])
 AT_SETUP([proper rendering of information with default settings])
 AT_KEYWORDS([qrcode])
 AT_CHECK_UNQUOTED([
-
-for i in $INPUT
-do
-  convert -background black -fill white -font FreeMono -pointsize 9 label:"$(qr $i)" png:- | zbarimg -q png:- | grep -q QR-Code:$i || exit 1
-done
-
+  convert -background black -fill white -font FreeMono -pointsize 9 label:"$(./../../qr "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
+AT_CLEANUP
+
+AT_SETUP([proper rendering of information using inverted colors])
+AT_KEYWORDS([qrcode])
+AT_CHECK_UNQUOTED([
+  convert -background white -fill black -font FreeMono -pointsize 9 label:"$(./../../qr -i "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+], [0], [], [])
+AT_CLEANUP
+
+AT_SETUP([proper rendering of information using large blocks])
+AT_KEYWORDS([qrcode])
+AT_CHECK_UNQUOTED([
+  convert -background black -fill white -font FreeMono -pointsize 4 label:"$(./../../qr -l "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+], [0], [], [])
+AT_CLEANUP
+
+AT_SETUP([proper rendering of information with default settings using stdin])
+AT_KEYWORDS([qrcode])
+AT_CHECK_UNQUOTED([
+  convert -background black -fill white -font FreeMono -pointsize 9 label:"$(echo "${INPUT}" | ./../../qr)" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+], [0], [], [])
+AT_CLEANUP
+
+AT_SETUP([fail and print a help screen when no arguments provided])
+AT_KEYWORDS([qrcode])
+AT_CHECK_UNQUOTED([./../../qr], [1], [], [
+Error: no input specified
+
+Usage: qr [[OPTIONS]] STRING
+  or:  cat FILE | qr [[OPTIONS]]
+
+Options:
+  -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
+  -v  QR version    [[1-40]]
+  -e  QR EC level   [[lmqh]] or [[1-4]]
+  -l  use two characters per block
+  -b  border width  [[1-10]] (the default is 2)
+  -i  invert colors
+  -p  force colorless output
+  -h  print help (this message)
+
+])
+AT_CLEANUP
+
+AT_SETUP([print a help screen when ran with a help flag])
+AT_KEYWORDS([qrcode])
+AT_CHECK_UNQUOTED([./../../qr -h], [0], [
+Usage: qr [[OPTIONS]] STRING
+  or:  cat FILE | qr [[OPTIONS]]
+
+Options:
+  -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
+  -v  QR version    [[1-40]]
+  -e  QR EC level   [[lmqh]] or [[1-4]]
+  -l  use two characters per block
+  -b  border width  [[1-10]] (the default is 2)
+  -i  invert colors
+  -p  force colorless output
+  -h  print help (this message)
+
+], [])
+AT_CLEANUP
+
+
+AT_SETUP([fail if the input is too long])
+AT_KEYWORDS([qrcode])
+AT_CHECK_UNQUOTED([./../../qr "${EXTRA_LONG_INPUT}"], [1], [], [
+Error: failed to generate QR code
+])
 AT_CLEANUP

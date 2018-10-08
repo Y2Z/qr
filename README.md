@@ -16,7 +16,7 @@ or
 
     $ sudo PREFIX=/usr/local make install
 
-### Usage
+### Use
 
     $ qr "Hello"
 or
