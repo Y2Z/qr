@@ -4,9 +4,22 @@ Print Unicode-friendly QR codes straight in your terminal.
 
 ![qr-snapshot](https://user-images.githubusercontent.com/1392048/38160038-0a03cbf2-3484-11e8-916d-2428085cb0f8.png)
 
+
 ## Build
 
     $ make clean all
+
+#### Dependencies
+ - [libqrencode](https://github.com/fukuchi/libqrencode)
+   ###### Resolve on Ubuntu or Debian
+       $ apt-get install libqrencode-dev
+   ###### Resolve on macOS
+       $ brew install qrencode
+   ###### Build from source
+       $ git clone https://github.com/fukuchi/libqrencode.git && cd libqrencode
+       $ ./configure --prefix=/usr/local
+       $ make
+       # make install
 
 
 ## Install
@@ -16,15 +29,15 @@ or
 
     $ sudo PREFIX=/usr/local make install
 
-### Use
+
+## Use
 
     $ qr "Hello"
 or
 
     $ echo -n "Hello" | qr
 
-
-## Options
+#### Options
 
     Usage: qr [OPTIONS] STRING
       or:  cat FILE | qr [OPTIONS]
@@ -45,28 +58,26 @@ or
     # make uninstall
 
 
-## Dependencies
+## Test
 
- - [libqrencode](https://github.com/fukuchi/libqrencode)
+    $ make clean test
 
-### Resolve on Ubuntu or Debian
-
-    $ apt-get install libqrencode-dev
-
-### Resolve on macOS
-
-    $ brew install qrencode
-
-## Build from source
-
-    $ git clone https://github.com/fukuchi/libqrencode.git && cd libqrencode
-    $ ./configure --prefix=/usr/local
-    $ make
-    # make install
-
-### Perform automated tests
-
-    $ make clean all tests test
+#### Dependencies
+ - [autoconf](https://www.gnu.org/software/autoconf/autoconf.html)
+   ###### Resolve on Ubuntu or Debian
+       $ apt-get install autoconf
+   ###### Resolve on macOS
+       $ brew install autoconf
+ - [zbar](http://zbar.sourceforge.net)
+   ###### Resolve on Ubuntu or Debian
+       $ apt-get install zbar-tools
+   ###### Resolve on macOS
+       $ brew install zbar
+ - [imagemagick](https://www.imagemagick.org/script/index.php)
+   ###### Resolve on Ubuntu or Debian
+       $ apt-get install imagemagick
+   ###### Resolve on macOS
+       $ brew install imagemagick
 
 
 ## Acknowledgements
