@@ -57,12 +57,16 @@ or
 
     $ brew install qrencode
 
-### Build from source
+## Build from source
 
     $ git clone https://github.com/fukuchi/libqrencode.git && cd libqrencode
     $ ./configure --prefix=/usr/local
     $ make
     # make install
+
+### Perform automated tests
+
+    $ make clean all tests test
 
 
 ## Acknowledgements
