@@ -2,8 +2,7 @@
 
 Print Unicode-friendly QR codes straight in your terminal.
 
-![qr-snapshot](https://user-images.githubusercontent.com/1392048/38160038-0a03cbf2-3484-11e8-916d-2428085cb0f8.png)
-
+![qr-screencast](https://user-images.githubusercontent.com/1392048/47276020-47b04800-d582-11e8-9da0-b09d0c949720.gif)
 
 ## Build
 
