@@ -1,4 +1,4 @@
-m4_define([AT_PACKAGE_BUGREPORT], [vflyson@uberspace.net])
+m4_define([AT_PACKAGE_BUGREPORT], [sunshine@uberspace.net])
 m4_define([AT_PACKAGE_STRING], [qr])
 
 AT_INIT
@@ -8,32 +8,32 @@ AT_BANNER([QR-Code tests])
 AT_SETUP([proper rendering of information with default settings])
 AT_KEYWORDS([qrcode])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font FreeMono -pointsize 9 label:"$(./../../qr "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  convert -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 AT_SETUP([proper rendering of information using inverted colors])
 AT_KEYWORDS([qrcode])
 AT_CHECK_UNQUOTED([
-  convert -background white -fill black -font FreeMono -pointsize 9 label:"$(./../../qr -i "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  convert -background white -fill black -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"\\$(./../../qr -i "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 AT_SETUP([proper rendering of information using large blocks])
 AT_KEYWORDS([qrcode])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font FreeMono -pointsize 4 label:"$(./../../qr -l "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  convert -background black -fill white -font "${FONT}" -pointsize 4 -interline-spacing -1 label:"$(./../../qr -l "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 AT_SETUP([proper rendering of information with default settings using stdin])
 AT_KEYWORDS([qrcode])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font FreeMono -pointsize 9 label:"$(echo "${INPUT}" | ./../../qr)" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  convert -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(echo "${INPUT}" | ./../../qr)" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
-AT_SETUP([fail and print a help screen when no arguments provided])
+AT_SETUP([fail and print help message when no arguments provided])
 AT_KEYWORDS([qrcode])
 AT_CHECK_UNQUOTED([./../../qr], [1], [], [
 Error: no input specified
@@ -54,7 +54,7 @@ Options:
 ])
 AT_CLEANUP
 
-AT_SETUP([print a help screen when ran with a help flag])
+AT_SETUP([print help message when ran with a help flag])
 AT_KEYWORDS([qrcode])
 AT_CHECK_UNQUOTED([./../../qr -h], [0], [
 Usage: qr [[OPTIONS]] STRING
@@ -72,7 +72,6 @@ Options:
 
 ], [])
 AT_CLEANUP
-
 
 AT_SETUP([fail if the input is too long])
 AT_KEYWORDS([qrcode])

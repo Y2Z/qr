@@ -1,0 +1,41 @@
+language: c
+
+sudo: false
+
+os:
+  - linux
+  - osx
+
+compiler:
+  - gcc
+  - clang
+
+addons:
+    apt:
+        update: true
+        packages:
+            - libqrencode-dev
+            - autoconf
+            - imagemagick
+            - zbar-tools
+            - fonts-freefont-ttf
+    homebrew:
+        taps:
+            - homebrew/cask-fonts
+        casks:
+            - font-freesans
+        packages:
+            - qrencode
+            - autoconf
+            - imagemagick
+            - zbar
+
+script:
+  - if [ "$TRAVIS_OS_NAME" == "osx" ]; then make test FONT=/Users/travis/Library/Fonts/FreeMono.otf; else make test; fi
+  - make install DESTDIR=.
+  - make uninstall DESTDIR=.
+
+notifications:
+    email: false
+
+after_failure: "cat tests.log"

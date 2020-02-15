@@ -4,11 +4,12 @@ Print Unicode-friendly QR codes straight in your terminal.
 
 ![qr-screencast](https://user-images.githubusercontent.com/1392048/47276020-47b04800-d582-11e8-9da0-b09d0c949720.gif)
 
-## Build
 
-    $ make clean all
+## How to build
 
-#### Dependencies
+    $ make
+
+#### Build dependencies
  - [libqrencode](https://github.com/fukuchi/libqrencode)
    ###### Resolve on Ubuntu or Debian
        $ apt-get install libqrencode-dev
@@ -21,7 +22,7 @@ Print Unicode-friendly QR codes straight in your terminal.
        # make install
 
 
-## Install
+## How to install
 
     # make install
 or
@@ -29,7 +30,7 @@ or
     $ sudo PREFIX=/usr/local make install
 
 
-## Use
+## Usage
 
     $ qr "Hello"
 or
@@ -46,22 +47,23 @@ or
       -v  QR version    [1-40]
       -e  QR EC level   [lmqh] or [1-4]
       -l  use two characters per block
+      -s  use 4 blocks per character
       -b  border width  [1-10] (the default is 2)
       -i  invert colors
       -p  force colorless output
       -h  print help (this message)
 
 
-## Uninstall
+## How to remove
 
     # make uninstall
 
 
-## Test
+## Running tests
 
-    $ make clean test
+    $ make test
 
-#### Dependencies
+#### Test dependencies
  - [autoconf](https://www.gnu.org/software/autoconf/autoconf.html)
    ###### Resolve on Ubuntu or Debian
        $ apt-get install autoconf
