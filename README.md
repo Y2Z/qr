@@ -1,3 +1,5 @@
+[![Travis CI Build Status](https://travis-ci.org/Y2Z/qr.svg?branch=master)](https://travis-ci.org/Y2Z/qr)
+
 # qr
 
 Print Unicode-friendly QR codes straight in your terminal.
@@ -79,6 +81,12 @@ or
        $ apt-get install imagemagick
    ###### Resolve on macOS
        $ brew install imagemagick
+ - [FreeMono font](https://en.wikipedia.org/wiki/GNU_FreeFont)
+   ###### Resolve on Ubuntu or Debian
+       $ apt-get install fonts-freefont-ttf
+   ###### Resolve on macOS
+       $ brew tap homebrew/cask-fonts
+       $ brew cask install font-freesans
 
 
 ## Acknowledgements
