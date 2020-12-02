@@ -108,12 +108,13 @@ static inline bool has_bom(const char *string)
     return (strcmp(string, bom_utf8) == 0);
 }
 
-char *qr_data_to_text(const unsigned char *data, const char border_width,
+char *qr_data_to_text(const QRcode *code, const char border_width,
                        const bool invert, const bool paint, const bool large)
 {
     int i = 0;
     int j = 0;
 
+    const unsigned char *data = code->data;
     if (data == NULL) {
         return NULL;
     }
@@ -128,7 +129,7 @@ char *qr_data_to_text(const unsigned char *data, const char border_width,
         (invert) ? DBLOCK3 : DBLOCK2,
         (invert) ? DBLOCK2 : DBLOCK3
     };
-    const int r = sqrt(strlen((char *)data));
+    const int r = code->width;
     const int l = r + border_width * 2;
     const int bytelen = (strlen(BLOCK0) * l + strlen(EOL)) * l +
         ((paint) ? strlen(BGBK_FGWH) + strlen(BGDF_FGDF) : 0) * l;
@@ -509,7 +510,7 @@ int main(int argc, char *argv[])
     }
 
     /* convert QR code data into text */
-    char *text = qr_data_to_text(qr->data, options.border,
+    char *text = qr_data_to_text(qr, options.border,
                                  options.invert, !options.plain, options.large);
 
     /* output QR code as text */
