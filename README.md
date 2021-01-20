@@ -42,18 +42,18 @@ or
 #### Options
 
     Usage: qr [OPTIONS] STRING
-      or:  cat FILE | qr [OPTIONS]
+    or:  cat FILE | qr [OPTIONS]
 
     Options:
-      -m  QR mode       [na8k] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
-      -v  QR version    [1-40]
-      -e  QR EC level   [lmqh] or [1-4]
-      -l  use two characters per block
-      -s  use 4 blocks per character
-      -b  border width  [1-10] (the default is 2)
-      -i  invert colors
-      -p  force colorless output
-      -h  print help (this message)
+    -m  QR mode       [na8k] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
+    -v  QR version    [1-40]
+    -e  QR EC level   [lmqh] or [1-4]
+    -l  use two characters per block
+    -c  compact mode
+    -b  border width  [1-4] (the default is 1)
+    -i  invert colors
+    -p  force colorless output
+    -h  print help (this message)
 
 
 ## How to remove
