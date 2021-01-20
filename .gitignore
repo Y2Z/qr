@@ -1,5 +1,7 @@
-qr
+.DS_Store
 
-tests
-tests.dir
-tests.log
+/qr
+
+/tests
+/tests.dir
+/tests.log
