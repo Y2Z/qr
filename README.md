@@ -1,5 +1,3 @@
-[![Travis CI Build Status](https://travis-ci.org/Y2Z/qr.svg?branch=master)](https://travis-ci.org/Y2Z/qr)
-
 # qr
 
 Print Unicode-friendly QR codes straight in your terminal.
