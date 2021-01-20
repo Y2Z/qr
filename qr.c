@@ -169,18 +169,20 @@ static inline bool has_utf8_bom(const char *string)
     return (strcmp(string, bom_utf8) == 0);
 }
 
-char *qr_data_to_text(const unsigned char *data, const char border_width,
+char *qr_data_to_text(const QRcode *code, const char border_width,
                        const bool invert_colors, const bool paint, const bool large_size,
                         const bool compact_mode)
 {
+    int ih = 0; // Horizontal index counter
+    int iv = 0; // Vertical index counter
+
+    const unsigned char *data = code->data;
+
     if (data == NULL) {
         return NULL;
     }
 
-    int ih = 0; // Horizontal index counter
-    int iv = 0; // Vertical index counter
-
-    const int resolution = sqrt(strlen((char *)data));
+    const int resolution = code->width;
     const int l = resolution + border_width * 2;
 
     char *text;
@@ -1025,7 +1027,7 @@ int main(int argc, char *argv[])
     }
 
     /* Convert QR code data into text */
-    char *text = qr_data_to_text(qr->data, options.border,
+    char *text = qr_data_to_text(qr, options.border,
                                   options.invert, !options.plain, options.large,
                                    options.compact);
 
