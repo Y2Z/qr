@@ -91,7 +91,7 @@ Options:
   -v  QR version    [[1-40]]
   -e  QR EC level   [[lmqh]] or [[1-4]]
   -l  use two characters per block
-  -c  compact mode for wide fonts
+  -c  compact mode
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
@@ -112,7 +112,7 @@ Options:
   -v  QR version    [[1-40]]
   -e  QR EC level   [[lmqh]] or [[1-4]]
   -l  use two characters per block
-  -c  compact mode for wide fonts
+  -c  compact mode
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
