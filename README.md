@@ -63,7 +63,11 @@ or
 
     $ make test
 
-#### Test dependencies
+
+<details>
+    <summary><strong>Test dependencies</strong></summary>
+    <br />
+
  - [autoconf](https://www.gnu.org/software/autoconf/autoconf.html)
    ###### Resolve on Ubuntu or Debian
        $ apt-get install autoconf
@@ -85,6 +89,8 @@ or
    ###### Resolve on macOS
        $ brew tap homebrew/cask-fonts
        $ brew cask install font-freesans
+
+</details>
 
 
 ## Acknowledgements
