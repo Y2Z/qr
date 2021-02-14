@@ -9,7 +9,10 @@ Print Unicode-friendly QR codes straight in your terminal.
 
     $ make
 
-#### Build dependencies
+<details>
+    <summary><strong>Build dependencies</strong></summary>
+    <br />
+
  - [libqrencode](https://github.com/fukuchi/libqrencode)
    ###### Resolve on Ubuntu or Debian
        $ apt-get install libqrencode-dev
@@ -20,6 +23,8 @@ Print Unicode-friendly QR codes straight in your terminal.
        $ ./configure --prefix=/usr/local
        $ make
        # make install
+
+</details>
 
 
 ## How to install
@@ -62,7 +67,6 @@ or
 ## Running tests
 
     $ make test
-
 
 <details>
     <summary><strong>Test dependencies</strong></summary>
