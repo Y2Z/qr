@@ -35,6 +35,12 @@ or
     $ sudo PREFIX=/usr/local make install
 
 
+## How to build and install using containers
+
+    $ docker build -t y2z/qr .
+    $ sudo install -b utils/qr.sh /usr/local/bin/qr
+
+
 ## Usage
 
     $ qr "Hello"
