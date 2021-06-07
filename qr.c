@@ -812,7 +812,7 @@ int main(int argc, char *argv[])
     }
 
     /* Check input */
-    if (str == NULL) {
+    if (str == NULL || strlen(str) == 0) {
         print_error("no input specified");
         fprintf(stderr, EOL "%s" EOL, help_msg);
         ret = 1;
