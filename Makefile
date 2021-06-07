@@ -26,7 +26,7 @@ uninstall:
 .PHONY: uninstall
 
 test: $(PROG)
-	autom4te --language=autotest -o tests tests.at
+	autom4te --no-cache -f -l autotest -o tests tests.at
 	./tests \
         FONT=$(FONT) \
         INPUT='Ünic0d3wörd 参 я' \
