@@ -1,6 +1,6 @@
 # qr
 
-Print Unicode-friendly QR codes straight in your terminal.
+Print Unicode-friendly QR Codes straight in your terminal.
 
 ![qr-screencast](https://user-images.githubusercontent.com/1392048/47276020-47b04800-d582-11e8-9da0-b09d0c949720.gif)
 
@@ -62,7 +62,8 @@ or
     -b  border width  [1-4] (the default is 1)
     -i  invert colors
     -p  force colorless output
-    -h  print help (this message)
+    -h  print help info and exit
+    -V  print version info and exit
 
 
 ## How to remove
@@ -111,9 +112,6 @@ and other countries.
 
 ## License
 
-<a href="http://creativecommons.org/publicdomain/zero/1.0/">
-    <img src="http://i.creativecommons.org/p/zero/1.0/88x31.png" alt="CC0-1.0" />
-</a>
-<br />
-To the extent possible under law, the author(s) have dedicated all copyright related and neighboring rights to this software to the public domain worldwide.
+To the extent possible under law, the author(s) have dedicated all copyright
+related and neighboring rights to this software to the public domain worldwide.
 This software is distributed without any warranty.
