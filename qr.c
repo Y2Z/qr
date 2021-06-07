@@ -1,96 +1,96 @@
+// SPDX-License-Identifier: CC0-1.0
+
 /*
  * QR Code is a registered trademark of DENSO WAVE INCORPORATED in Japan
  * and other countries.
  *
  */
 
+#include <getopt.h>
+#include <locale.h>
+#include <math.h>
+#include <qrencode.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <getopt.h>
-#include <math.h>
-#include <qrencode.h>
 
-/* STDIN read buffer size */
-#define BUFFER_SIZE      64
+/* STDIN read buffer chunk size */
+#define STDIN_CHUNKSIZE 64
 
 /* Single-module blocks (large size) */
-#define BLOCK_0          "  "
-#define BLOCK_1          "██"
-
+#define BLOCK_0 "  "
+#define BLOCK_1 "██"
 /* Single-module blocks (large size, compact mode) */
-#define BLOCK_0_C        " "
-#define BLOCK_1_C        "█"
-
+#define BLOCK_0_C " "
+#define BLOCK_1_C "█"
 /* Double-module blocks (default size, normal mode) */
 /*
-    Bit order: [ bottom_module | top_module ]
+    Module bit order: [ bottom | top ]
 */
-#define DBL_BLOCK_00     " "
-#define DBL_BLOCK_01     "▀"
-#define DBL_BLOCK_10     "▄"
-#define DBL_BLOCK_11     "█"
-
+#define DBL_BLOCK_00 " "
+#define DBL_BLOCK_01 "▀"
+#define DBL_BLOCK_10 "▄"
+#define DBL_BLOCK_11 "█"
 /* Quad-module blocks (default size, compact mode) */
 /*
-    Bit order: [ bottom_right_mod | top_right_mod | bottom_left_mod | top_left_mod ]
+    Module bit order: [ bottom_right | top_right | bottom_left | top_left ]
 */
-#define QUAD_BLOCK_0000  " "
-#define QUAD_BLOCK_0001  "▘"
-#define QUAD_BLOCK_0010  "▖"
-#define QUAD_BLOCK_0011  "▌"
-#define QUAD_BLOCK_0100  "▝"
-#define QUAD_BLOCK_1000  "▗"
-#define QUAD_BLOCK_1001  "▚"
-#define QUAD_BLOCK_1010  "▄"
-#define QUAD_BLOCK_0101  "▀"
-#define QUAD_BLOCK_O110  "▞"
-#define QUAD_BLOCK_0111  "▛"
-#define QUAD_BLOCK_1011  "▙"
-#define QUAD_BLOCK_1100  "▐"
-#define QUAD_BLOCK_1101  "▜"
-#define QUAD_BLOCK_1110  "▟"
-#define QUAD_BLOCK_1111  "█"
+#define QUAD_BLOCK_0000 " "
+#define QUAD_BLOCK_0001 "▘"
+#define QUAD_BLOCK_0010 "▖"
+#define QUAD_BLOCK_0011 "▌"
+#define QUAD_BLOCK_0100 "▝"
+#define QUAD_BLOCK_1000 "▗"
+#define QUAD_BLOCK_1001 "▚"
+#define QUAD_BLOCK_1010 "▄"
+#define QUAD_BLOCK_0101 "▀"
+#define QUAD_BLOCK_O110 "▞"
+#define QUAD_BLOCK_0111 "▛"
+#define QUAD_BLOCK_1011 "▙"
+#define QUAD_BLOCK_1100 "▐"
+#define QUAD_BLOCK_1101 "▜"
+#define QUAD_BLOCK_1110 "▟"
+#define QUAD_BLOCK_1111 "█"
 
 /* ANSI terminal colors */
-#define FG_WH            "\x1b[37m"
-#define FG_DF            "\x1b[39m"
-#define BG_BK            "\x1b[40m"
-#define BG_DF            "\x1b[49m"
-#define BGBK_FGWH        BG_BK FG_WH
-#define BGDF_FGDF        BG_DF FG_DF
+#define FG_WH     "\x1b[37m"
+#define FG_DF     "\x1b[39m"
+#define BG_BK     "\x1b[40m"
+#define BG_DF     "\x1b[49m"
+#define BGBK_FGWH BG_BK FG_WH
+#define BGDF_FGDF BG_DF FG_DF
 
 /* Newline character(s) */
-#define EOL              "\n"
+#define EOL "\n"
 
-typedef unsigned char    bool;
-#define true             1
-#define false            0
+typedef unsigned char bool;
+#define true          1
+#define false         0
 
 /* Use binary code to represent modules when referring to blocks */
-#define B_0              0
-#define B_1              1
-#define B_00             B_0
-#define B_01             B_1
-#define B_10             2
-#define B_11             3
-#define B_0000           B_0
-#define B_0001           B_1
-#define B_0010           B_10
-#define B_0011           B_11
-#define B_0100           4
-#define B_0101           5
-#define B_0110           6
-#define B_0111           7
-#define B_1000           8
-#define B_1001           9
-#define B_1010           10
-#define B_1011           11
-#define B_1100           12
-#define B_1101           13
-#define B_1110           14
-#define B_1111           15
+#define B_0    0
+#define B_1    1
+#define B_00   B_0
+#define B_01   B_1
+#define B_10   2
+#define B_11   3
+#define B_0000 B_0
+#define B_0001 B_1
+#define B_0010 B_10
+#define B_0011 B_11
+#define B_0100 4
+#define B_0101 5
+#define B_0110 6
+#define B_0111 7
+#define B_1000 8
+#define B_1001 9
+#define B_1010 10
+#define B_1011 11
+#define B_1100 12
+#define B_1101 13
+#define B_1110 14
+#define B_1111 15
 
 typedef struct {
     char  encode_mode;
@@ -104,10 +104,10 @@ typedef struct {
 } Options;
 
 /* Unicode BOM */
-const char *bom_utf8 = "\xEF\xBB\xBF";
+const char *utf8_bom = "\xEF\xBB\xBF";
 
 /* Help message */
-const char *help = EOL
+const char *help_msg =
     "Usage: qr [OPTIONS] STRING" EOL
     "  or:  cat FILE | qr [OPTIONS]" EOL
     EOL
@@ -121,29 +121,33 @@ const char *help = EOL
     "  -b  border width  [1-4] (the default is 1)" EOL
     "  -i  invert colors" EOL
     "  -p  force colorless output" EOL
-    "  -h  print help (this message)" EOL
+    "  -h  print help info and exit" EOL
+    "  -V  print version info and exit" EOL
 ;
 
-void bzero(void *s, size_t n);
-
-void print_help(void)
+void print_help_msg(void)
 {
-    printf("%s" EOL, help);
+    printf("%s" EOL, help_msg);
+}
+
+void print_version(void)
+{
+    printf("qr %s" EOL, VERSION);
 }
 
 void print_error(const char *message)
 {
-    fprintf(stderr, EOL "Error: %s" EOL, message);
+    fprintf(stderr, "Error: %s" EOL, message);
 }
 
-static inline bool has_utf8_bom(const char *string)
+static inline bool str_has_utf8_bom(const char *string)
 {
-    return (strcmp(string, bom_utf8) == 0);
+    return (strcmp(string, utf8_bom) == 0);
 }
 
 char *qr_data_to_text(const QRcode *code, const char border_width,
-                       const bool invert_colors, const bool paint, const bool large_size,
-                        const bool compact_mode)
+                       const bool invert_colors, const bool paint,
+                       const bool large_size, const bool compact_mode)
 {
     int ih = 0; // Horizontal index counter
     int iv = 0; // Vertical index counter
@@ -160,111 +164,9 @@ char *qr_data_to_text(const QRcode *code, const char border_width,
     char *text;
 
     if (large_size) {
+        /*******************************************************************/
         /* One module per block (large size and large size + compact mode) */
-
-        /*
-
-        `qr -l`:
-
-        ██████████████████████████████████████████████
-        ██              ██████  ██  ██              ██
-        ██  ██████████  ██  ██  ██  ██  ██████████  ██
-        ██  ██      ██  ██  ██    ████  ██      ██  ██
-        ██  ██      ██  ██████████  ██  ██      ██  ██
-        ██  ██      ██  ██          ██  ██      ██  ██
-        ██  ██████████  ██      ██████  ██████████  ██
-        ██              ██  ██  ██  ██              ██
-        ██████████████████  ██████████████████████████
-        ██    ██  ████    ████      ██      ██    ████
-        ██  ██        ██████  ██  ██  ██        ██  ██
-        ██  ██  ██████  ██  ████  ██    ████  ██  ████
-        ██        ██████  ████  ██          ██  ██████
-        ████    ██  ██  ██████    ████████    ██  ████
-        ██████████████████  ████████    ██████  ██  ██
-        ██              ██  ████      ██    ████    ██
-        ██  ██████████  ██████  ████████████  ██    ██
-        ██  ██      ██  ██████  ██    ██████████  ████
-        ██  ██      ██  ██      ██████████          ██
-        ██  ██      ██  ████      ████      ██████  ██
-        ██  ██████████  ██    ██    ████████  ████████
-        ██              ██  ██  ████████  ██  ██  ████
-        ██████████████████████████████████████████████
-
-        `qr -li`:
-
-          ██████████████    ██  ████  ██████████████
-          ██          ██  ████  ██    ██          ██
-          ██  ██████  ██  ████    ██  ██  ██████  ██
-          ██  ██████  ██    ██  ██    ██  ██████  ██
-          ██  ██████  ██  ██      ██  ██  ██████  ██
-          ██          ██  ██    ████  ██          ██
-          ██████████████  ██  ██  ██  ██████████████
-                          ██████████
-          ████  ██    ████  ████      ██████  ████
-              ██    ██    ██        ██  ████████  ██
-              ██  ██  ██████    ██  ██████    ██  ██
-          ██████                ██  ████████  ██
-                  ██    ██████      ██      ████  ██
-                          ██  ████  ████      ██  ██
-          ██████████████  ██████    ██  ████    ████
-          ██          ██        ████        ██    ██
-          ██  ██████  ██        ██  ██          ██
-          ██  ██████  ██  ████            ██████████
-          ██  ██████  ██      ██  ██  ██████      ██
-          ██          ██  ██████    ██      ██
-          ██████████████  ████████    ████  ██  ██
-
-        `qr -lc`:
-
-        ███████████████████████
-        █       ██ █  █       █
-        █ █████ █  █ ██ █████ █
-        █ █   █ █  ██ █ █   █ █
-        █ █   █ ██ █ ██ █   █ █
-        █ █   █ █ ███ █ █   █ █
-        █ █████ █ ██  █ █████ █
-        █       █ █ █ █       █
-        █████████     █████████
-        █  █ ██  █  ███   █  ██
-        █      █ ██ ██ █    █ █
-        █ ████  █ █ █   ██ █ ██
-        █   █  █ █ █ █    █ ███
-        █ ██ ██   ███ ███  █ ██
-        █████████    █  ███ █ █
-        █       █ █ ██ █  ██  █
-        █ █████ ██ █  ████ ██ █
-        █ █   █ ███  █ █████ ██
-        █ █   █ █ █ █████     █
-        █ █   █ ██  █ █   ███ █
-        █ █████ █  ██  ███ ████
-        █       █  █  █  █ █ ██
-        ███████████████████████
-
-        `qr -lci`:
-
-         ███████   █ █ ███████
-         █     █ █ █ █ █     █
-         █ ███ █ █ ██  █ ███ █
-         █ ███ █     █ █ ███ █
-         █ ███ █ █████ █ ███ █
-         █     █ ███   █     █
-         ███████ █ █ █ ███████
-                 █
-         ██ █  ██  ███ ███ ██
-         █    █   █ █ █ ████ █
-         ██ █  █ █  █ ██  █ █
-         ██ █ ██   █████ █
-         ███   █ █ ██    ██ █
-                 ████ ██   █ █
-         ███████ ██████ ██  ██
-         █     █  █  █    █ █
-         █ ███ █  █  ██
-         █ ███ █ ███ █   █████
-         █ ███ █  ████ ███   █
-         █     █ ██   █   █
-         ███████ ████  ██ █ █
-
-        */
+        /*******************************************************************/
 
         const char *blocks[2] = {
             // 0
@@ -359,43 +261,14 @@ char *qr_data_to_text(const QRcode *code, const char border_width,
             strcat(text, EOL);
         }
     } else {
+        /****************************************************************/
         /* Two or four modules per block (normal mode and compact mode) */
+        /****************************************************************/
 
         if (compact_mode) {
+            /*****************************************/
             /* Four modules per block (compact mode) */
-
-            /*
-
-            `qr -c`:
-
-            ▛▀▀▀█▛▛▛▀▀▀▌
-            ▌▛▀▌▌▌▚▌▛▀▌▌
-            ▌▌ ▌▛▀▘▌▌ ▌▌
-            ▌▀▀▘▌▖▛▌▀▀▘▌
-            ▛▜▜▛▚▛▀▛▀▛▜▌
-            █▛▙▞▞▙▐▟▗▗▚▌
-            ▛▌▞▀▙▌▚▖▜▚▜▌
-            ▛▀▀▀▌▝▀▖▞▙▘▌
-            ▌▛▀▌█▖▛▘▟▜▐▌
-            ▌▌ ▌▙▜▜ ▖▀▖▌
-            ▌▀▀▘▌█▄▜▞█▜▌
-            ▀▀▀▀▀▀▀▀▀▀▀▘
-
-            `qr -ci`:
-
-            ▗▄▄▄ ▖▄▗▄▄▄
-            ▐▗▄▐▐▌▚▐▗▄▐
-            ▐▐█▐▗▘▚▐▐█▐
-            ▐▄▄▟▐▗▜▐▄▄▟
-            ▗▖▖▗▞█▀▗▄▗▖
-            ▗▚▙▄▟▙▗▘▛▛▞
-            ▝▟▘▄▗▚▚▝▖▞▖
-            ▗▄▄▄▐▚▘▞▚▝▟
-            ▐▗▄▐ ▗▛▙▘▖▖
-            ▐▐█▐▝▌▚ ▜▄▜
-            ▐▄▄▟▐▖▄▀▚ ▖
-
-            */
+            /*****************************************/
 
             const char *blocks[16] = {
                 (invert_colors) ? QUAD_BLOCK_0000 : QUAD_BLOCK_1111,
@@ -620,40 +493,9 @@ char *qr_data_to_text(const QRcode *code, const char border_width,
                 strcat(text, EOL);
             }
         } else {
+            /***************************************/
             /* Two modules per block (normal mode) */
-
-            /*
-
-            `qr`:
-
-            █▀▀▀▀▀▀▀██▀█▀▀█▀▀▀▀▀▀▀█
-            █ █▀▀▀█ █  █▄▀█ █▀▀▀█ █
-            █ █   █ █▀▄█▄▀█ █   █ █
-            █ ▀▀▀▀▀ █ █▀▄ █ ▀▀▀▀▀ █
-            █▀▀█▀██▀▀▄  ▄▄█▀▀▀█▀▀██
-            █ █   █▀ █▄▄█▀▀▄██ ▄▀▄█
-            ██  █▀█▀▀  █▄▀█▀█▀▀▄▀██
-            █▀▀▀▀▀▀▀█  ▀▄█▀█ ▄█▄▀ █
-            █ █▀▀▀█ ██▄█ ▄▄▀  ▀██▀█
-            █ █   █ █▄█ ▄▀██▄▀▀▀▄ █
-            █ ▀▀▀▀▀ █ ▀█▀▀▄▄▄▀██▀██
-            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-
-            `qr -i`:
-
-             ▄▄▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄▄
-             █ ▄▄▄ █ ▀█▄█▀ █ ▄▄▄ █
-             █ ███ █ ▄▀ ▀█ █ ███ █
-             █▄▄▄▄▄█ █ █ ▄ █▄▄▄▄▄█
-             ▄▄▄  ▄▄ ████▄▄▄▄▄  ▄▄
-             ▀▀ ▀██▄ ▄▀▀   █ █ ▀█▀
-             ▀▀█▄ ▄█▀█▄ ▀▄▄▀  ▀▀▀
-             ▄▄▄▄▄▄▄ ▀  █▄█▀▄█▀▀ ▀
-             █ ▄▄▄ █ ▀▄ █▄██▄▄▀ ▄
-             █ ███ █ ▄▀█   ▄▄█ ▄▄▄
-             █▄▄▄▄▄█ █ ▄ ▀ ▄▄█▀  ▄
-
-            */
+            /***************************************/
 
             const char *blocks[4] = {
                 (invert_colors) ? DBL_BLOCK_00 : DBL_BLOCK_11,
@@ -847,9 +689,14 @@ QRecLevel get_qr_ec_level(const char ec_level)
 int main(int argc, char *argv[])
 {
     int ret = 0;
-    char *str = "";
-    char buffer[BUFFER_SIZE];
+    char *str = NULL;
     int c = 0;
+
+    // Enable wide-character support
+    char *p = setlocale(LC_ALL, "");
+    if (!p) {
+        print_error("unable to unset locale");
+    }
 
     /* Default options */
     Options options = {
@@ -865,29 +712,28 @@ int main(int argc, char *argv[])
 
     /* Process STDIN (if any) */
     if (!isatty(STDIN_FILENO)) {
+        size_t bufsize = STDIN_CHUNKSIZE;
+        str = malloc(bufsize);
         ssize_t stdin_read_size = 0;
+        size_t total_bytes = 0;
 
-        size_t buffer_size = 0;
-        while ((stdin_read_size = read(0, buffer, BUFFER_SIZE)) > 0) {
-            size_t new_buffer_size = buffer_size + stdin_read_size;
-            char *new_buffer = malloc(new_buffer_size);
+        while ((stdin_read_size = read(STDIN_FILENO, str, STDIN_CHUNKSIZE)) > 0) {
+            total_bytes += stdin_read_size;
+            bufsize += STDIN_CHUNKSIZE;
+            str = realloc(str, bufsize);
 
-            if (new_buffer == NULL) {
+            if (str == NULL) {
                 print_error("out of memory");
                 ret = 1;
-                goto cleanup;
+                goto exit;
             }
-
-            memcpy(new_buffer, str, buffer_size);
-            memcpy(&new_buffer[buffer_size], buffer, stdin_read_size);
-            str = new_buffer;
-            buffer_size = new_buffer_size;
         }
     }
 
-    /* Parse cli arguments */
+    /* Parse CLI arguments */
     while (optind < argc) {
-        if ((c = getopt(argc, argv, "m:v:e:lcb:iph")) == -1) {
+        if ((c = getopt(argc, argv, "m:v:e:lcb:iphV")) == -1) {
+            free(str);
             str = argv[optind++];
             continue;
         }
@@ -927,14 +773,19 @@ int main(int argc, char *argv[])
 
             case '?':
                 ret = 1;
-                goto cleanup;
+                goto exit;
 
             case 'h':
-                print_help();
-                goto cleanup;
+                print_help_msg();
+                goto exit;
+
+            case 'V':
+                print_version();
+                goto exit;
         }
     }
 
+    /* Validate options */
     if (
         options.version < 0 || options.version > QRSPEC_VERSION_MAX ||
         get_qr_ec_level(options.ec_level) < 0 ||
@@ -942,27 +793,30 @@ int main(int argc, char *argv[])
         options.border < 1 || options.border > 4
     ) {
         print_error("invalid options");
-        fprintf(stderr, "%s" EOL, help);
+        fprintf(stderr, "%s" EOL, help_msg);
         ret = 1;
-        goto cleanup;
+        goto exit;
     }
 
+    /* Validate arguments */
     if (optind != argc) {
         if (str != NULL) {
             print_error("too many arguments");
-            fprintf(stderr, "%s" EOL, help);
+            fprintf(stderr, "%s" EOL, help_msg);
             ret = 1;
-            goto cleanup;
+            goto exit;
         }
 
-        str = argv[optind];
+        str = malloc(strlen(argv[optind])+1);
+        memcpy(&str, &argv[optind], strlen(argv[optind])+1);
     }
 
-    if (strlen(str) == 0) {
+    /* Check input */
+    if (str == NULL || strlen(str) == 0) {
         print_error("no input specified");
-        fprintf(stderr, "%s" EOL, help);
+        fprintf(stderr, EOL "%s" EOL, help_msg);
         ret = 1;
-        goto cleanup;
+        goto exit;
     }
 
     /*******************************/
@@ -971,26 +825,27 @@ int main(int argc, char *argv[])
 
     QRcode *qr;
 
-    /* Ensure QR code contains UTF-8 BOM */
-    if (has_utf8_bom(str)) {
+    /* Ensure QR Code contains UTF-8 BOM */
+    if (str_has_utf8_bom(str)) {
         qr = QRcode_encodeString(str, options.version,
                                  get_qr_ec_level(options.ec_level),
                                  get_qr_encode_mode(options.encode_mode), true);
     } else {
-        char str_utf8[strlen(bom_utf8) + strlen(str) + 1];
-        strcpy(str_utf8, bom_utf8);
-        strcat(str_utf8, str);
+        char str_utf8[strlen(utf8_bom) + strlen(str) + 1];
+        memset(str_utf8, '\0', sizeof(str_utf8));
+        strncpy(str_utf8, utf8_bom, sizeof(str_utf8));
+        strncat(str_utf8, str, sizeof(str_utf8));
+        str_utf8[strlen(utf8_bom) + strlen(str)] = '\0';
         qr = QRcode_encodeString(str_utf8, options.version,
                                  get_qr_ec_level(options.ec_level),
                                  get_qr_encode_mode(options.encode_mode), true);
-        bzero(str_utf8, strlen(str_utf8));
     }
 
     /* Bail out if unable to successfully execute QRcode_encodeString() */
     if (qr == NULL) {
         print_error("failed to generate QR code");
         ret = 1;
-        goto cleanup;
+        goto exit;
     }
 
     /* Enforce colorless output mode for non-terminal environments */
@@ -999,26 +854,24 @@ int main(int argc, char *argv[])
     }
 
     /* Convert QR code data into text */
-    char *text = qr_data_to_text(qr, options.border,
-                                  options.invert, !options.plain, options.large,
-                                   options.compact);
+    char *qr_code_text = qr_data_to_text(qr, options.border, options.invert,
+                                 !options.plain, options.large,
+                                 options.compact);
 
     /* Output QR code as text */
-    if (text) {
-        printf("%s", text);
-        bzero(text, strlen(text));
-        free(text);
+    if (qr_code_text) {
+        printf("%s", qr_code_text);
     } else {
-        print_error("failed to convert QR code into text");
+        print_error("failed to convert QR code data into text");
         ret = 1;
     }
 
-    /* Wipe data from memory (for security reasons) */
-    bzero(qr->data, strlen((char *)qr->data));
-    bzero(qr, sizeof(QRcode));
-    QRcode_free(qr);
-cleanup:
-    bzero(str, strlen(str));
+    /* Clean up */
+    if (qr != NULL) {
+        QRcode_free(qr);
+    }
+    free(qr_code_text);
 
+exit:
     return ret;
 }
