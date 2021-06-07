@@ -76,7 +76,7 @@ AT_CHECK_UNQUOTED([
 AT_CLEANUP
 
 ## 11
-AT_SETUP([fails and prints help message when no arguments provided])
+AT_SETUP([fails and prints help information when no arguments provided])
 AT_CHECK_UNQUOTED([./../../qr], [1], [], [\
 Error: no input specified
 
@@ -99,7 +99,7 @@ Options:
 AT_CLEANUP
 
 ## 12
-AT_SETUP([prints help message when ran with a help flag])
+AT_SETUP([prints help information when help flag is set])
 AT_CHECK_UNQUOTED([./../../qr -h], [0], [\
 Usage: qr [[OPTIONS]] STRING
   or:  cat FILE | qr [[OPTIONS]]
@@ -120,6 +120,12 @@ Options:
 AT_CLEANUP
 
 ## 13
+AT_SETUP([prints version informaton when version flag is set])
+AT_CHECK_UNQUOTED([./../../qr -V], [0], [qr 1.0.0
+], [])
+AT_CLEANUP
+
+## 14
 AT_SETUP([fails if the input is too long])
 AT_CHECK_UNQUOTED([./../../qr "${EXTRA_LONG_INPUT}"], [1], [], [\
 Error: failed to generate QR code
