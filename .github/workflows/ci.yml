@@ -23,6 +23,9 @@ jobs:
       run: make
     - name: Test
       run: make test
+    - name: Print test logs
+      if: ${{ always() }}
+      run: cat tests.dir/*/*.log
     - name: Install
       run: PREFIX=/usr/local sudo make install
     - name: Run
