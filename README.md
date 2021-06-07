@@ -41,6 +41,15 @@ or
     $ sudo install -b utils/qr.sh /usr/local/bin/qr
 
 
+## How to build and install on FreeBSD
+
+    $ pkg install qr
+or
+
+    $ cd /usr/ports/textproc/qr/
+    $ make install clean
+
+
 ## Usage
 
     $ qr "Hello"
