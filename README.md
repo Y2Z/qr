@@ -1,6 +1,6 @@
 # qr
 
-Print Unicode-friendly QR Codes straight in your terminal.
+Print Unicode-friendly QR Codes® straight in your terminal!
 
 ![qr-screencast](https://user-images.githubusercontent.com/1392048/47276020-47b04800-d582-11e8-9da0-b09d0c949720.gif)
 
