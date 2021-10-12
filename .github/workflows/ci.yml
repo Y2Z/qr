@@ -7,11 +7,22 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-20.04
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-18.04
+          - os: ubuntu-20.04
+          - os: macos-10.15
+          - os: macos-11
+
+    continue-on-error: true
 
     steps:
     - uses: actions/checkout@v2
-    - name: Resolve dependencies
+
+    - name: Resolve dependencies (Ubuntu)
       run: |
         sudo apt-get update && \
         sudo apt-get install autoconf \
@@ -19,16 +30,34 @@ jobs:
           imagemagick \
           libqrencode-dev \
           zbar-tools
+      if: matrix.os == 'ubuntu-18.04' || matrix.os == 'ubuntu-20.04'
+
+    - name: Resolve dependencies (macOS)
+      run: |
+        brew install autoconf \
+          imagemagick \
+          qrencode \
+          zbar
+        brew tap homebrew/cask-fonts
+        brew install --cask font-freefont
+        convert -font FreeMono label:"Unable to revert mtime: /Library/Fonts fix" png:- > /dev/null
+      if: matrix.os == 'macos-10.15' || matrix.os == 'macos-11'
+
     - name: Build
       run: make
+
     - name: Test
       run: make test
+
     - name: Print test logs
       if: ${{ failure() }}
       run: cat tests.dir/*/*.log
+
     - name: Install
       run: PREFIX=/usr/local sudo make install
+
     - name: Run
       run: /usr/local/bin/qr Success
+
     - name: Uninstall
       run: PREFIX=/usr/local sudo make uninstall
