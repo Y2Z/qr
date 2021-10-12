@@ -108,7 +108,7 @@ or
        $ apt-get install fonts-freefont-ttf
    ###### Resolve on macOS
        $ brew tap homebrew/cask-fonts
-       $ brew cask install font-freesans
+       $ brew install --cask font-freefont
 
 </details>
 
