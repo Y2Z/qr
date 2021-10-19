@@ -15,20 +15,20 @@ clean:
 .PHONY: clean
 
 install: all
-	echo installing executable file to $(DESTDIR)$(PREFIX)/bin
-	install -d $(DESTDIR)$(PREFIX)/bin
-	install -m 755 $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG)
+	@echo installing executable file into $(DESTDIR)$(PREFIX)/bin
+	@install -d $(DESTDIR)$(PREFIX)/bin
+	@install -m 755 $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG)
 .PHONY: install
 
 uninstall:
-	echo removing executable file from $(DESTDIR)$(PREFIX)/bin
-	rm -f $(DESTDIR)$(PREFIX)/bin/$(PROG)
+	@echo removing executable file from $(DESTDIR)$(PREFIX)/bin
+	@rm -f $(DESTDIR)$(PREFIX)/bin/$(PROG)
 .PHONY: uninstall
 
 test: $(PROG)
-	autom4te --no-cache -f -l autotest -o tests tests.at
-	./tests \
+	@autom4te --no-cache -f -l autotest -o tests tests.at
+	@./tests \
         FONT="FreeMono" \
-        INPUT='Ünic0d3wörd 参 я' \
+        INPUT="Ünic0d3wörd 参 я" \
         EXTRA_LONG_INPUT="参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し参考文献に掲載されている文章等を抜粋し"
 .PHONY: test
