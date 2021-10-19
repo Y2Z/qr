@@ -8,7 +8,7 @@ RUN apk update && \
 COPY Makefile qr.c .
 
 RUN make clean && \
-    make -j 16 && \
+    make -j && \
     make install
 
 CMD ["qr"]

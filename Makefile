@@ -4,7 +4,7 @@
 include config.mk
 
 $(PROG):
-	$(CC) $(PROG).c $(CFLAGS) $(LIBS) -DVERSION="\"$(VERSION)\"" -o $(PROG)
+	$(CC) $(PROG).c $(CFLAGS) $(LIBS) -DPROG="\"$(PROG)\"" -DVERSION="\"$(VERSION)\"" -o $(PROG)
 
 all: $(PROG)
 .PHONY: all

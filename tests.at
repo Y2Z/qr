@@ -73,18 +73,20 @@ AT_SETUP([fails to generate an empty QR Code])
 AT_CHECK_UNQUOTED([./../../qr ""], [1], [], [\
 Error: no input specified
 
-Usage: qr [[OPTIONS]] STRING
+Usage: qr [[OPTIONS]] [[STRING]]
   or:  cat FILE | qr [[OPTIONS]]
 
 Options:
+  -a  produce animated QR code
   -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
   -v  QR version    [[1-40]]
   -e  QR EC level   [[lmqh]] or [[1-4]]
-  -l  use two characters per block
+  -l  large mode
   -c  compact mode
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
+  -u  ensure output has UTF-8 BOM
   -h  print help info and exit
   -V  print version info and exit
 
@@ -96,18 +98,20 @@ AT_SETUP([fails and prints help information when no arguments provided])
 AT_CHECK_UNQUOTED([./../../qr], [1], [], [\
 Error: no input specified
 
-Usage: qr [[OPTIONS]] STRING
+Usage: qr [[OPTIONS]] [[STRING]]
   or:  cat FILE | qr [[OPTIONS]]
 
 Options:
+  -a  produce animated QR code
   -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
   -v  QR version    [[1-40]]
   -e  QR EC level   [[lmqh]] or [[1-4]]
-  -l  use two characters per block
+  -l  large mode
   -c  compact mode
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
+  -u  ensure output has UTF-8 BOM
   -h  print help info and exit
   -V  print version info and exit
 
@@ -117,18 +121,20 @@ AT_CLEANUP
 ## 12
 AT_SETUP([prints help information when help flag is set])
 AT_CHECK_UNQUOTED([./../../qr -h], [0], [\
-Usage: qr [[OPTIONS]] STRING
+Usage: qr [[OPTIONS]] [[STRING]]
   or:  cat FILE | qr [[OPTIONS]]
 
 Options:
+  -a  produce animated QR code
   -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
   -v  QR version    [[1-40]]
   -e  QR EC level   [[lmqh]] or [[1-4]]
-  -l  use two characters per block
+  -l  large mode
   -c  compact mode
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
+  -u  ensure output has UTF-8 BOM
   -h  print help info and exit
   -V  print version info and exit
 
@@ -137,7 +143,7 @@ AT_CLEANUP
 
 ## 13
 AT_SETUP([prints version informaton when version flag is set])
-AT_CHECK_UNQUOTED([./../../qr -V], [0], [qr 1.0.0
+AT_CHECK_UNQUOTED([./../../qr -V], [0], [qr 2.0.0
 ], [])
 AT_CLEANUP
 

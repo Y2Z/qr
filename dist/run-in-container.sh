@@ -6,4 +6,4 @@ if which podman 2>&1 > /dev/null; then
     DOCKER=podman
 fi
 
-$DOCKER run --rm y2z/qr qr "$@"
+$DOCKER run --rm Y2Z/qr qr "$@"

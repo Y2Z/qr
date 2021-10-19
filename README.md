@@ -9,9 +9,7 @@ Print Unicode-friendly QR Codes® straight in your terminal!
 
     $ make
 
-<details>
-    <summary><strong>Build dependencies</strong></summary>
-    <br />
+#### Build dependencies
 
  - [libqrencode](https://github.com/fukuchi/libqrencode)
    ###### Resolve on Ubuntu or Debian
@@ -24,8 +22,6 @@ Print Unicode-friendly QR Codes® straight in your terminal!
        $ make
        # make install
 
-</details>
-
 
 ## How to install
 
@@ -37,8 +33,8 @@ or
 
 ## How to build and install using containers
 
-    $ docker build -t y2z/qr .
-    $ sudo install -b utils/qr.sh /usr/local/bin/qr
+    $ docker build -t Y2Z/qr .
+    $ sudo install -b dist/run-in-container.sh /usr/local/bin/qr
 
 
 ## How to build and install on FreeBSD
@@ -56,13 +52,17 @@ or
 or
 
     $ echo -n "Hello" | qr
+or
+
+    $ cat file.png | qr -a
 
 #### Options
 
-    Usage: qr [OPTIONS] STRING
+    Usage: qr [OPTIONS] [STRING]
     or:  cat FILE | qr [OPTIONS]
 
     Options:
+    -a  produce animated QR code
     -m  QR mode       [na8k] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
     -v  QR version    [1-40]
     -e  QR EC level   [lmqh] or [1-4]
@@ -71,6 +71,7 @@ or
     -b  border width  [1-4] (the default is 1)
     -i  invert colors
     -p  force colorless output
+    -u  ensure output has UTF-8 BOM
     -h  print help info and exit
     -V  print version info and exit
 
@@ -84,9 +85,7 @@ or
 
     $ make test
 
-<details>
-    <summary><strong>Test dependencies</strong></summary>
-    <br />
+#### Test dependencies
 
  - [autoconf](https://www.gnu.org/software/autoconf/autoconf.html)
    ###### Resolve on Ubuntu or Debian
@@ -109,8 +108,6 @@ or
    ###### Resolve on macOS
        $ brew tap homebrew/cask-fonts
        $ brew install --cask font-freefont
-
-</details>
 
 
 ## Acknowledgements
