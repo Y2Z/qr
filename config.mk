@@ -7,7 +7,9 @@ PROG = qr
 # font used in tests
 FONT = FreeMono
 
+#
 # Customize below to fit your system
+#
 
 # paths
 PREFIX = /usr/local
