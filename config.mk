@@ -1,18 +1,17 @@
-# qr version
-VERSION = 2.0.0
-
 # program name
 PROG = qr
 
-# font used in tests
-FONT = FreeMono
+# program version
+VERSION = 2.0.0
 
+#
 # Customize below to fit your system
+#
 
 # paths
 PREFIX = /usr/local
 
-# libs
+# libraries
 LIBS = -lm -lqrencode
 
 # flags
