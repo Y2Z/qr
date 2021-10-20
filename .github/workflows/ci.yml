@@ -11,15 +11,26 @@ jobs:
 
     strategy:
       matrix:
-        include:
-          - os: ubuntu-18.04
-          - os: ubuntu-20.04
-          - os: macos-10.15
-          - os: macos-11
+        os: 
+          - ubuntu-18.04
+          - ubuntu-20.04
+          - macos-10.15
+          - macos-11
+        cc: 
+          - gcc
+          - clang
+        arch:
+          - amd64
+          - arm64
+          - arm
+          - ppc64le
+          - s390x
 
     continue-on-error: true
 
     steps:
+    - run: git config --global core.autocrlf false
+
     - uses: actions/checkout@v2
 
     - name: Resolve dependencies (Ubuntu)
@@ -30,7 +41,7 @@ jobs:
           imagemagick \
           libqrencode-dev \
           zbar-tools
-      if: matrix.os == 'ubuntu-18.04' || matrix.os == 'ubuntu-20.04'
+      if: contains(matrix.os, 'ubuntu')
 
     - name: Resolve dependencies (macOS)
       run: |
@@ -41,12 +52,19 @@ jobs:
         brew tap homebrew/cask-fonts
         brew install --cask font-freefont
         convert -font FreeMono label:"Unable to revert mtime: /Library/Fonts fix" png:- > /dev/null
-      if: matrix.os == 'macos-10.15' || matrix.os == 'macos-11'
+      if: contains(matrix.os, 'macos')
 
     - name: Build
       run: make
 
-    - name: Test
+    - name: Test (Ubuntu)
+      shell: 'script --return --quiet --command "bash {0}"'
+      if: contains(matrix.os, 'ubuntu')
+      run: make test
+
+    - name: Test (macOS)
+      shell: bash -l {0}
+      if: contains(matrix.os, 'macos')
       run: make test
 
     - name: Print test logs
@@ -56,7 +74,14 @@ jobs:
     - name: Install
       run: PREFIX=/usr/local sudo make install
 
-    - name: Run
+    - name: Run (Ubuntu)
+      shell: 'script --return --quiet --command "bash {0}"'
+      if: contains(matrix.os, 'ubuntu')
+      run: /usr/local/bin/qr Success
+
+    - name: Run (macOS)
+      shell: bash -l {0}
+      if: contains(matrix.os, 'macos')
       run: /usr/local/bin/qr Success
 
     - name: Uninstall
