@@ -71,6 +71,7 @@ or
     -b  border width  [1-4] (the default is 1)
     -i  invert colors
     -p  force colorless output
+    -u  ensure output has UTF-8 BOM
     -h  print help info and exit
     -V  print version info and exit
 
