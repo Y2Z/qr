@@ -1,22 +1,19 @@
-# qr version
-VERSION = 1.0.0
+# Program version
+VERSION = 1.1.0
 
-# program name
+# Program name
 PROG = qr
-
-# font used in tests
-FONT = FreeMono
 
 # Customize below to fit your system
 
-# paths
+# Paths
 PREFIX = /usr/local
 
-# libs
+# Libs
 LIBS = -lm -lqrencode
 
-# flags
+# Flags
 CFLAGS = -std=c99 -pedantic -Wall -Wextra -Wfatal-errors -pedantic-errors -O3 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L
 
-# compiler
+# Compiler
 CC = cc

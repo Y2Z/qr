@@ -101,6 +101,7 @@ typedef struct {
     short border;
     bool  invert;
     bool  plain;
+    bool  unicode;
 } Options;
 
 /* Unicode BOM */
@@ -121,6 +122,7 @@ const char *help_msg =
     "  -b  border width  [1-4] (the default is 1)" EOL
     "  -i  invert colors" EOL
     "  -p  force colorless output" EOL
+    "  -u  ensure output has UTF-8 BOM" EOL
     "  -h  print help info and exit" EOL
     "  -V  print version info and exit" EOL
 ;
@@ -732,7 +734,7 @@ int main(int argc, char *argv[])
 
     /* Parse CLI arguments */
     while (optind < argc) {
-        if ((c = getopt(argc, argv, "m:v:e:lcb:iphV")) == -1) {
+        if ((c = getopt(argc, argv, "m:v:e:lcb:ipuhV")) == -1) {
             free(str);
             str = argv[optind++];
             continue;
@@ -769,6 +771,10 @@ int main(int argc, char *argv[])
 
             case 'p':
                 options.plain = true;
+                break;
+
+            case 'u':
+                options.unicode = true;
                 break;
 
             case '?':
@@ -825,18 +831,18 @@ int main(int argc, char *argv[])
 
     QRcode *qr;
 
-    /* Ensure QR Code contains UTF-8 BOM */
-    if (str_has_utf8_bom(str)) {
-        qr = QRcode_encodeString(str, options.version,
-                                 get_qr_ec_level(options.ec_level),
-                                 get_qr_encode_mode(options.encode_mode), true);
-    } else {
+    if (options.unicode && !str_has_utf8_bom(str)) {
+        /* Prepend UTF-8 BOM to the input string */
         char str_utf8[strlen(utf8_bom) + strlen(str) + 1];
         memset(str_utf8, '\0', sizeof(str_utf8));
         strncpy(str_utf8, utf8_bom, sizeof(str_utf8));
         strncat(str_utf8, str, sizeof(str_utf8));
         str_utf8[strlen(utf8_bom) + strlen(str)] = '\0';
         qr = QRcode_encodeString(str_utf8, options.version,
+                                 get_qr_ec_level(options.ec_level),
+                                 get_qr_encode_mode(options.encode_mode), true);
+    } else {
+        qr = QRcode_encodeString(str, options.version,
                                  get_qr_ec_level(options.ec_level),
                                  get_qr_encode_mode(options.encode_mode), true);
     }
