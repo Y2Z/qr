@@ -27,7 +27,8 @@ jobs:
           fonts-freefont-ttf \
           imagemagick \
           libqrencode-dev \
-          zbar-tools
+          zbar-tools \
+          zlib1g-dev
 
     - name: Resolve dependencies (macOS)
       if: runner.os == 'macOS'

@@ -78,7 +78,7 @@ Usage: qr [[OPTIONS]] STRING
 
 Options:
   -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
-  -v  QR version    [[1-40]]
+  -v  QR version    [[1-40]] (the default is 10 for -a)
   -e  QR EC level   [[lmqh]] or [[1-4]]
   -l  use two characters per block
   -c  compact mode
@@ -86,6 +86,11 @@ Options:
   -i  invert colors
   -p  force colorless output
   -u  ensure output has UTF-8 BOM
+  -a  animate data  [[bbqr|bbqr-hex|bbqr-base32|bbqr-zlib|ur|numbered|txqr]]
+  -t  data type     [[auto|psbt|tx|json|cbor|text|binary]] (for -a)
+  -f  frame rate    [[1-30]] (frames per second, the default is 4)
+  -n  number of frames to output (for -a)
+  -r  print frame contents instead of QR codes (for -a)
   -h  print help info and exit
   -V  print version info and exit
 
@@ -102,7 +107,7 @@ Usage: qr [[OPTIONS]] STRING
 
 Options:
   -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
-  -v  QR version    [[1-40]]
+  -v  QR version    [[1-40]] (the default is 10 for -a)
   -e  QR EC level   [[lmqh]] or [[1-4]]
   -l  use two characters per block
   -c  compact mode
@@ -110,6 +115,11 @@ Options:
   -i  invert colors
   -p  force colorless output
   -u  ensure output has UTF-8 BOM
+  -a  animate data  [[bbqr|bbqr-hex|bbqr-base32|bbqr-zlib|ur|numbered|txqr]]
+  -t  data type     [[auto|psbt|tx|json|cbor|text|binary]] (for -a)
+  -f  frame rate    [[1-30]] (frames per second, the default is 4)
+  -n  number of frames to output (for -a)
+  -r  print frame contents instead of QR codes (for -a)
   -h  print help info and exit
   -V  print version info and exit
 
@@ -124,7 +134,7 @@ Usage: qr [[OPTIONS]] STRING
 
 Options:
   -m  QR mode       [[na8k]] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
-  -v  QR version    [[1-40]]
+  -v  QR version    [[1-40]] (the default is 10 for -a)
   -e  QR EC level   [[lmqh]] or [[1-4]]
   -l  use two characters per block
   -c  compact mode
@@ -132,6 +142,11 @@ Options:
   -i  invert colors
   -p  force colorless output
   -u  ensure output has UTF-8 BOM
+  -a  animate data  [[bbqr|bbqr-hex|bbqr-base32|bbqr-zlib|ur|numbered|txqr]]
+  -t  data type     [[auto|psbt|tx|json|cbor|text|binary]] (for -a)
+  -f  frame rate    [[1-30]] (frames per second, the default is 4)
+  -n  number of frames to output (for -a)
+  -r  print frame contents instead of QR codes (for -a)
   -h  print help info and exit
   -V  print version info and exit
 
@@ -188,4 +203,143 @@ AT_CLEANUP
 ## 21
 AT_SETUP([does not add a second UTF-8 BOM])
 AT_CHECK([test "$(printf '\357\273\277foo' | ./../../qr -p -u)" = "$(./../../qr -p -u foo)"], [0], [], [])
+AT_CLEANUP
+
+## 22
+AT_SETUP([encodes binary data from STDIN])
+AT_CHECK([printf 'a\000b' | ./../../qr -p > with_nul && ./../../qr -p a > without_nul && ! cmp -s with_nul without_nul], [0], [], [])
+AT_CLEANUP
+
+## 23
+AT_SETUP([splits data into BBQr frames])
+AT_CHECK([printf 'hello' | ./../../qr -a bbqr-hex -r], [0], [B$HU010068656C6C6F
+])
+AT_CHECK([printf 'hello' | ./../../qr -a bbqr-base32 -t binary -r], [0], [B$2B0100NBSWY3DP
+])
+AT_CHECK([echo '{"a": 1}' | ./../../qr -a bbqr -t json -r], [0], [B$2J0100PMRGCIR2EAYX2CQ
+])
+dnl Parts are numbered in base 36
+AT_CHECK([head -c 400 /dev/urandom | ./../../qr -a bbqr-base32 -v 1 -r | cut -c 1-8 | sed -n '1p;37p'], [0], [B$2B1400
+B$2B1410
+])
+dnl Compressible data gets zlib-compressed
+AT_CHECK([head -c 30000 /dev/zero | ./../../qr -a bbqr -r | cut -c 1-4 | uniq], [0], [B$ZB
+])
+dnl Parts are equally sized, except for the last one
+AT_CHECK([head -c 3000 /dev/urandom | ./../../qr -a bbqr-base32 -v 10 -r | awk '{print length($0)}' | uniq -c | awk '{print $1}'], [0], [12
+1
+])
+AT_CLEANUP
+
+## 24
+AT_SETUP([detects PSBTs in binary, base64 and hex form])
+AT_CHECK([printf 'psbt\377\001\002' > psbt.bin
+  ./../../qr -a bbqr-hex -r < psbt.bin
+  printf 'cHNidP8BAg==\n' | ./../../qr -a bbqr-hex -r
+  printf '70736274FF0102' | ./../../qr -a bbqr-hex -r
+  printf 'not a psbt' | ./../../qr -a bbqr -t psbt -r], [1], [B$HP010070736274FF0102
+B$HP010070736274FF0102
+B$HP010070736274FF0102
+], [Error: input is not a PSBT
+])
+AT_CHECK([printf '0200aBcD' | ./../../qr -a bbqr-hex -t tx -r], [0], [B$HT01000200ABCD
+])
+AT_CLEANUP
+
+## 25
+AT_SETUP([decodes and joins BBQr frames])
+AT_CHECK([head -c 5000 /dev/urandom > data && ./../../qr -a bbqr -v 8 -r < data > frames && python3 -c '
+import sys, zlib, base64
+parts = sorted(open("frames").read().split(), key=lambda p: int(p[[6:8]], 36))
+assert all(p[[:6]] == parts[[0]][[:6]] for p in parts) and int(parts[[0]][[4:6]], 36) == len(parts)
+enc, body = parts[[0]][[2]], "".join(p[[8:]] for p in parts)
+data = bytes.fromhex(body) if enc == "H" else base64.b32decode(body + "=" * (-len(body) % 8))
+if enc == "Z": data = zlib.decompress(data, wbits=-10)
+sys.stdout.buffer.write(data)' | cmp - data], [0], [], [])
+AT_CLEANUP
+
+## 26
+AT_SETUP([generates scannable BBQr QR Codes])
+AT_CHECK_UNQUOTED([
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(printf 'hello' | ./../../qr -a bbqr-hex)" png:- | zbarimg -q png:- | grep -q 'QR-Code:B\$HU010068656C6C6F' || exit 1
+], [0], [], [])
+AT_CLEANUP
+
+## 27
+AT_SETUP([rejects options for animated QR Codes without -a])
+AT_CHECK([./../../qr -t psbt foo 2>&1 | head -n 1; ./../../qr -r foo 2>&1 | head -n 1; ./../../qr -n 2 foo 2>&1 | head -n 1; ./../../qr -a bbqr -m n 1 2>&1 | head -n 1], [0], [Error: invalid options
+Error: invalid options
+Error: invalid options
+Error: invalid options
+])
+AT_CLEANUP
+
+## 28
+AT_SETUP([outputs the requested number of frames])
+AT_CHECK([printf 'hello' | ./../../qr -a bbqr-hex -r -n 3], [0], [B$HU010068656C6C6F
+B$HU010068656C6C6F
+B$HU010068656C6C6F
+])
+AT_CHECK([head -c 600 /dev/urandom | ./../../qr -a bbqr-base32 -v 5 -r -n 5 | cut -c 1-8], [0], [B$2B0700
+B$2B0701
+B$2B0702
+B$2B0703
+B$2B0704
+])
+AT_CHECK([test "$(./../../qr -a bbqr-hex -n 3 hello | grep -c '^$')" = 2], [0], [], [])
+AT_CLEANUP
+
+## 29
+AT_SETUP([encodes data as single-part URs])
+dnl Test vector from the reference implementation (bc-ur)
+AT_CHECK([printf '\221\156\306\134\367\174\255\365\134\327\371\315\241\241\003\000\046\335\324\056\220\133\167\255\303\156\117\055\074\313\244\117\177\004\362\336\104\364\055\204\303\164\240\341\111\023\157\045\260\030' | ./../../qr -a ur -r], [0], [UR:BYTES/HDEYMEJTSWHHYLKEPMYKHHTSYTSNOYOYAXAEDSUTTYDMMHHPKTPMSRJTGWDPFNSBOXGWLBAAWZUEFYWKDPLRSRJYNBVYGABWJLDAPFCSDWKBRKCH
+])
+AT_CHECK([printf 'psbt\377\001\002' | ./../../qr -a ur -r], [0], [UR:CRYPTO-PSBT/FLJOJKIDJYZMADAOINLNSFRS
+])
+AT_CLEANUP
+
+## 30
+AT_SETUP([splits data into multi-part URs with fountain codes])
+AT_CHECK([head -c 3000 /dev/urandom | ./../../qr -a ur -r -n 40 | cut -d / -f 1-2 | uniq -c | awk '{print $1, $2}' | sed -n '1p;18p;19p;40p'], [0], [1 UR:BYTES/1-18
+1 UR:BYTES/18-18
+1 UR:BYTES/19-18
+1 UR:BYTES/40-18
+])
+AT_CLEANUP
+
+## 31
+AT_SETUP([generates scannable UR QR Codes])
+AT_CHECK_UNQUOTED([
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(printf 'hello' | ./../../qr -a ur)" png:- | zbarimg -q png:- | grep -q 'QR-Code:UR:BYTES/FEISIHJZJZJLCKIHJEVD' || exit 1
+], [0], [], [])
+AT_CLEANUP
+
+## 32
+AT_SETUP([splits text into numbered parts])
+AT_CHECK([printf 'hello' | ./../../qr -a numbered -r], [0], [hello
+])
+AT_CHECK([printf '%0300d' 0 | ./../../qr -a numbered -v 5 -r | cut -c 1-5], [0], [p1of3
+p2of3
+p3of3
+])
+dnl Parts join back into the original text, without splitting characters
+AT_CHECK([printf 'Ünic0d3wörd 参 я %.0s' 1 2 3 4 5 6 7 8 9 10 > text
+  ./../../qr -a numbered -v 2 -r < text > parts
+  sed 's/^p[[0-9]]*of[[0-9]]* //' parts | tr -d '\n' | cmp - text && iconv -f UTF-8 -t UTF-8 parts > /dev/null], [0], [], [])
+dnl PSBTs are sent in base64, transactions in hex
+AT_CHECK([printf 'psbt\377\001\002' | ./../../qr -a numbered -r; printf '0200aBcD' | ./../../qr -a numbered -t tx -r], [0], [cHNidP8BAg==
+0200abcd
+])
+AT_CLEANUP
+
+## 33
+AT_SETUP([encodes data as TXQR frames])
+AT_CHECK([printf 'hello' | ./../../qr -a txqr -r; printf 'psbt\377\001\002' | ./../../qr -a txqr -r], [0], [0/258/5|hello
+0/257/12|cHNidP8BAg==
+])
+dnl Checksums of the frames made by the reference implementation (Go)
+AT_CHECK([printf 'hello world, this is a txqr test message!' | ./../../qr -a txqr -v 3 -r | cksum], [0], [338318238 120
+])
+AT_CHECK([printf 'hello world, this is a txqr test message!' | ./../../qr -a txqr -v 1 -r -n 30 | cksum], [0], [3887260687 379
+])
 AT_CLEANUP
