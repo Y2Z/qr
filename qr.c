@@ -7,6 +7,7 @@
  */
 
 #include <qrencode.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,40 +16,15 @@
 /* Initial size of the buffer used for reading STDIN */
 #define STDIN_BUFSIZE 256
 
-/* Single-module blocks (large size) */
-#define BLOCK_0 "  "
-#define BLOCK_1 "██"
-/* Single-module blocks (large size, compact mode) */
-#define BLOCK_0_C " "
-#define BLOCK_1_C "█"
-/* Double-module blocks (default size, normal mode) */
 /*
-    Module bit order: [ bottom | top ]
-*/
-#define DBL_BLOCK_00 " "
-#define DBL_BLOCK_01 "▀"
-#define DBL_BLOCK_10 "▄"
-#define DBL_BLOCK_11 "█"
-/* Quad-module blocks (default size, compact mode) */
-/*
-    Module bit order: [ bottom_right | top_right | bottom_left | top_left ]
-*/
-#define QUAD_BLOCK_0000 " "
-#define QUAD_BLOCK_0001 "▘"
-#define QUAD_BLOCK_0010 "▖"
-#define QUAD_BLOCK_0011 "▌"
-#define QUAD_BLOCK_0100 "▝"
-#define QUAD_BLOCK_1000 "▗"
-#define QUAD_BLOCK_1001 "▚"
-#define QUAD_BLOCK_1010 "▄"
-#define QUAD_BLOCK_0101 "▀"
-#define QUAD_BLOCK_O110 "▞"
-#define QUAD_BLOCK_0111 "▛"
-#define QUAD_BLOCK_1011 "▙"
-#define QUAD_BLOCK_1100 "▐"
-#define QUAD_BLOCK_1101 "▜"
-#define QUAD_BLOCK_1110 "▟"
-#define QUAD_BLOCK_1111 "█"
+ * Every character cell is split into 2x2 quadrants; a glyph is picked by
+ * which quadrants are filled.  Mask bits:  1 = top left,    2 = top right,
+ *                                          4 = bottom left, 8 = bottom right
+ */
+static const char *const glyphs[16] = {
+    " ", "▘", "▝", "▀", "▖", "▌", "▞", "▛",
+    "▗", "▚", "▐", "▜", "▄", "▙", "▟", "█",
+};
 
 /* ANSI terminal colors */
 #define FG_WH     "\x1b[37m"
@@ -60,34 +36,6 @@
 
 /* Newline character(s) */
 #define EOL "\n"
-
-typedef unsigned char bool;
-#define true          1
-#define false         0
-
-/* Use binary code to represent modules when referring to blocks */
-#define B_0    0
-#define B_1    1
-#define B_00   B_0
-#define B_01   B_1
-#define B_10   2
-#define B_11   3
-#define B_0000 B_0
-#define B_0001 B_1
-#define B_0010 B_10
-#define B_0011 B_11
-#define B_0100 4
-#define B_0101 5
-#define B_0110 6
-#define B_0111 7
-#define B_1000 8
-#define B_1001 9
-#define B_1010 10
-#define B_1011 11
-#define B_1100 12
-#define B_1101 13
-#define B_1110 14
-#define B_1111 15
 
 typedef struct {
     QRencodeMode encode_mode;
@@ -193,494 +141,83 @@ bool parse_int(const char *string, int min, int max, int *result)
     return true;
 }
 
-char *qr_data_to_text(const QRcode *code, const char border_width,
-                       const bool invert_colors, const bool paint,
-                       const bool large_size, const bool compact_mode)
+/*
+ * Tell whether the quadrant-sized module at (x, y) of the bordered symbol is
+ * filled.  Modules beyond the symbol (the unused half of the last row or
+ * column of character cells) are never filled.
+ */
+static inline bool is_filled(const QRcode *code, const int border,
+                             const bool invert, const int x, const int y)
 {
-    int ih = 0; // Horizontal index counter
-    int iv = 0; // Vertical index counter
+    const int width = code->width;
+    const int size = width + border * 2;
+    const int dx = x - border;
+    const int dy = y - border;
+    bool dark;
 
-    const unsigned char *data = code->data;
-
-    if (data == NULL) {
-        return NULL;
+    if (x >= size || y >= size) {
+        return false;
     }
 
-    const int resolution = code->width;
-    const int l = resolution + border_width * 2;
+    dark = dx >= 0 && dy >= 0 && dx < width && dy < width &&
+           (code->data[dy * width + dx] & 1);
 
-    char *text;
+    /* Light modules are drawn by default (meant for dark backgrounds) */
+    return invert ? dark : !dark;
+}
 
-    if (large_size) {
-        /*******************************************************************/
-        /* One module per block (large size and large size + compact mode) */
-        /*******************************************************************/
+/*
+ * Print the QR code as text.  One module spans module_w x module_h
+ * quadrants: 2x1 (normal), 1x1 (compact), 4x2 (large), 2x2 (large compact).
+ */
+int print_qr(FILE *out, const QRcode *code, const int border,
+             const bool invert, const bool paint,
+             const int module_w, const int module_h)
+{
+    const int size = code->width + border * 2;
+    const int cols = (size * module_w + 1) / 2;
+    const int rows = (size * module_h + 1) / 2;
+    int cx, cy, q;
 
-        const char *blocks[2] = {
-            // 0
-            (invert_colors) ?
-                (compact_mode) ? BLOCK_0_C : BLOCK_0 :
-                (compact_mode) ? BLOCK_1_C : BLOCK_1,
-            // 1
-            (invert_colors) ?
-                (compact_mode) ? BLOCK_1_C : BLOCK_1 :
-                (compact_mode) ? BLOCK_0_C : BLOCK_0,
-        };
-        const char modules_per_block_v = 1;
-        const char modules_per_block_h = 1;
+    for (cy = 0; cy < rows; cy++) {
+        bool reset_bg = false;
 
-        const int byte_len =
-            (strlen((compact_mode) ? BLOCK_1_C : BLOCK_1) * l + strlen(EOL)) * l +
-            ((paint) ? strlen(BGBK_FGWH) + strlen(BGDF_FGDF) : 0) * l;
-        text = malloc(byte_len + 1);
-        /* Move cursor to the beginning of *text */
-        text[0] = '\0';
-
-        /* Top border */
-        for (iv = 0; iv < border_width; iv += modules_per_block_v) {
-            /* Set palette */
-            if (paint) {
-                strcat(text, BGBK_FGWH);
-            }
-
-            /* Append top border blocks */
-            for (ih = 0; ih < l; ih += modules_per_block_h) {
-                strcat(text, blocks[B_0]);
-            }
-
-            /* Reset palette */
-            if (paint) {
-                strcat(text, BGDF_FGDF);
-            }
-
-            /* Put newline */
-            strcat(text, EOL);
+        if (paint) {
+            fputs(BGBK_FGWH, out);
         }
 
-        /* Left border, data, right border */
-        for (iv = 0; iv < resolution; iv += modules_per_block_v) {
-            /* Set palette */
-            if (paint) {
-                strcat(text, BGBK_FGWH);
+        for (cx = 0; cx < cols; cx++) {
+            unsigned char mask = 0;
+            bool partial = false;
+
+            for (q = 0; q < 4; q++) {
+                const int qx = cx * 2 + (q & 1);
+                const int qy = cy * 2 + (q >> 1);
+
+                if (qx >= size * module_w || qy >= size * module_h) {
+                    partial = true;
+                } else if (is_filled(code, border, invert,
+                                     qx / module_w, qy / module_h)) {
+                    mask |= 1 << q;
+                }
             }
 
-            /* Append left border blocks */
-            for (ih = 0; ih < border_width; ih += modules_per_block_h) {
-                strcat(text, blocks[B_0]);
+            /* Keep the part of the cell beyond the symbol transparent */
+            if (paint && !invert && partial && !reset_bg) {
+                fputs(BG_DF, out);
+                reset_bg = true;
             }
 
-            /* Append data blocks */
-            for (ih = 0; ih < resolution; ih++) {
-                strcat(text, blocks[data[iv * resolution + ih] & B_1]);
-            }
-
-            /* Append right border blocks */
-            for (ih = 0; ih < border_width; ih += modules_per_block_h) {
-                strcat(text, blocks[B_0]);
-            }
-
-            /* Reset palette */
-            if (paint) {
-                strcat(text, BGDF_FGDF);
-            }
-
-            /* Put newline */
-            strcat(text, EOL);
+            fputs(glyphs[mask], out);
         }
 
-        /* Bottom border */
-        for (iv = 0; iv < border_width; iv += modules_per_block_v) {
-            /* Set palette */
-            if (paint) {
-                strcat(text, BGBK_FGWH);
-            }
-
-            /* Append bottom border blocks */
-            for (ih = 0; ih < l; ih += modules_per_block_h) {
-                strcat(text, blocks[B_0]);
-            }
-
-            /* Reset palette */
-            if (paint) {
-                strcat(text, BGDF_FGDF);
-            }
-
-            /* Put newline */
-            strcat(text, EOL);
+        if (paint) {
+            fputs(BGDF_FGDF, out);
         }
-    } else {
-        /****************************************************************/
-        /* Two or four modules per block (normal mode and compact mode) */
-        /****************************************************************/
-
-        if (compact_mode) {
-            /*****************************************/
-            /* Four modules per block (compact mode) */
-            /*****************************************/
-
-            const char *blocks[16] = {
-                (invert_colors) ? QUAD_BLOCK_0000 : QUAD_BLOCK_1111,
-                (invert_colors) ? QUAD_BLOCK_0001 : QUAD_BLOCK_1110,
-                (invert_colors) ? QUAD_BLOCK_0010 : QUAD_BLOCK_1101,
-                (invert_colors) ? QUAD_BLOCK_0011 : QUAD_BLOCK_1100,
-                (invert_colors) ? QUAD_BLOCK_0100 : QUAD_BLOCK_1011,
-                (invert_colors) ? QUAD_BLOCK_0101 : QUAD_BLOCK_1010,
-                (invert_colors) ? QUAD_BLOCK_O110 : QUAD_BLOCK_1001,
-                (invert_colors) ? QUAD_BLOCK_0111 : QUAD_BLOCK_1000,
-                (invert_colors) ? QUAD_BLOCK_1000 : QUAD_BLOCK_0111,
-                (invert_colors) ? QUAD_BLOCK_1001 : QUAD_BLOCK_O110,
-                (invert_colors) ? QUAD_BLOCK_1010 : QUAD_BLOCK_0101,
-                (invert_colors) ? QUAD_BLOCK_1011 : QUAD_BLOCK_0100,
-                (invert_colors) ? QUAD_BLOCK_1100 : QUAD_BLOCK_0011,
-                (invert_colors) ? QUAD_BLOCK_1101 : QUAD_BLOCK_0010,
-                (invert_colors) ? QUAD_BLOCK_1110 : QUAD_BLOCK_0001,
-                (invert_colors) ? QUAD_BLOCK_1111 : QUAD_BLOCK_0000,
-            };
-            const char modules_per_block_v = 2;
-            const char modules_per_block_h = 2;
-            const char border_leftover_v = (border_width % modules_per_block_v);
-            const char border_leftover_h = (border_width % modules_per_block_h);
-
-            const int byte_len =
-                (strlen(QUAD_BLOCK_1111) * l + strlen(EOL)) * l +
-                ((paint) ? strlen(BGBK_FGWH) + strlen(BGDF_FGDF) : 0) * l;
-            text = malloc(byte_len + 1);
-            /* Move cursor to the beginning of *text */
-            text[0] = '\0';
-
-            /* Top border */
-            for (iv = 0; iv < border_width - border_leftover_v; iv += modules_per_block_v) {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-                }
-
-                /* Append top border quad-blocks */
-                for (ih = 0; ih < l - border_leftover_h; ih += modules_per_block_h) {
-                    strcat(text, blocks[B_0000]);
-                }
-
-                /* Trailing quad-module blocks for right border */
-                if (border_leftover_h % modules_per_block_h != 0) {
-                    /* Avoid coloring rightmost (transparent) quad-module line */
-                    if (paint && !invert_colors) {
-                        strcat(text, BG_DF);
-                    }
-
-                    /* Append quad-module block */
-                    strcat(text, blocks[(invert_colors) ? B_0000 : B_1100]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-
-            /* Left border, data, right border */
-            for (iv = -border_leftover_v; iv < resolution; iv += modules_per_block_v) {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-                }
-
-                /* Append left border quad-module blocks */
-                for (ih = 0; ih < border_width - border_leftover_h; ih += modules_per_block_h) {
-                    strcat(text, blocks[B_0000]);
-                }
-
-                /* Append data quad-module blocks */
-                bool is_top_half_border_iter = (iv == -1) ? true : false;
-                bool is_last_data_row_iter = (iv == resolution - 1) ? true : false;
-                for (ih = -border_leftover_h; ih < resolution; ih += modules_per_block_h) {
-                    bool is_left_half_border_iter = (ih == -1) ? true : false;
-                    bool is_last_data_col_iter = (ih == resolution - 1) ? true : false;
-
-                    unsigned char block_mask = B_0000;
-
-                    if (is_top_half_border_iter) {
-                        if (is_left_half_border_iter) {
-                            // Able to determine bottom-right module
-                            if (data[iv * resolution + ih + resolution + 1] & 1) {
-                                block_mask += B_1000;
-                            }
-                        } else {
-                            // Can determine both of bottom modules
-                            if (data[iv * resolution + ih + resolution] & 1) {
-                                block_mask += B_0010;
-                            }
-                            if (!is_last_data_col_iter && data[iv * resolution + ih + resolution + 1] & 1) {
-                                block_mask += B_1000;
-                            }
-                        }
-                    } else {
-                        if (is_left_half_border_iter) {
-                            // Can determine both of right modules
-                            if (data[iv * resolution + ih + 1] & 1) {
-                                block_mask += B_0100;
-                            }
-                            if (!is_last_data_row_iter && data[iv * resolution + ih + resolution + 1] & 1) {
-                                block_mask += B_1000;
-                            }
-                        } else {
-                            // Can determine all modules
-                            if (data[iv * resolution + ih] & 1) {
-                                block_mask += B_0001;
-                            }
-                            if (!is_last_data_col_iter && data[iv * resolution + ih + 1] & 1) {
-                                block_mask += B_0100;
-                            }
-                            if (!is_last_data_row_iter) {
-                                if (data[iv * resolution + ih + resolution] & 1) {
-                                    block_mask += B_0010;
-                                }
-                                if (!is_last_data_col_iter && data[iv * resolution + ih + resolution + 1] & 1) {
-                                    block_mask += B_1000;
-                                }
-                            }
-                        }
-                    }
-
-                    strcat(text, blocks[block_mask]);
-                }
-
-                /* Append right border quad-module blocks */
-                for (ih = 0; ih < border_width - border_leftover_h; ih += modules_per_block_h) {
-                    strcat(text, blocks[B_0000]);
-                }
-
-                /* Trailing quad-module blocks for right border */
-                if (border_leftover_h % modules_per_block_h != 0) {
-                    /* Avoid coloring rightmost (transparent) quad-module line */
-                    if (paint && !invert_colors) {
-                        strcat(text, BG_DF);
-                    }
-
-                    /* Append quad-module block */
-                    strcat(text, blocks[(invert_colors) ? B_0000 : B_1100]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-
-            /* Bottom border */
-            for (iv = modules_per_block_v; iv < border_width; iv += modules_per_block_v) {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-                }
-
-                /* Append quad-module blocks */
-                for (ih = 0; ih < l - border_leftover_h; ih += modules_per_block_h) {
-                    strcat(text, blocks[B_0000]);
-                }
-
-                /* Trailing quad-module blocks for right border */
-                if (border_leftover_h % modules_per_block_h != 0) {
-                    /* Avoid coloring rightmost (transparent) quad-module line */
-                    if (paint && !invert_colors) {
-                        strcat(text, BG_DF);
-                    }
-
-                    /* Append quad-module block */
-                    strcat(text, blocks[(invert_colors) ? B_0000 : B_1100]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-
-            /* Trailing quad-module blocks for bottom border */
-            if (border_leftover_v == 0 || border_leftover_v % modules_per_block_v != 0) {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-
-                    /* Avoid coloring last (transparent) quad-module line */
-                    if (!invert_colors) {
-                        strcat(text, BG_DF);
-                    }
-                }
-
-                /* Append quad-module blocks */
-                for (ih = 0; ih < l - border_leftover_h; ih += modules_per_block_h) {
-                    strcat(text, blocks[(invert_colors) ? B_0000 : B_1010]);
-                }
-
-                /* Trailing quad-module blocks for right border */
-                if (border_leftover_h % modules_per_block_h != 0) {
-                    /* Avoid coloring rightmost (transparent) quad-module line */
-                    if (paint && !invert_colors) {
-                        strcat(text, BG_DF);
-                    }
-
-                    /* Append quad-module block */
-                    strcat(text, blocks[(invert_colors) ? B_0000 : B_1110]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-        } else {
-            /***************************************/
-            /* Two modules per block (normal mode) */
-            /***************************************/
-
-            const char *blocks[4] = {
-                (invert_colors) ? DBL_BLOCK_00 : DBL_BLOCK_11,
-                (invert_colors) ? DBL_BLOCK_10 : DBL_BLOCK_01,
-                (invert_colors) ? DBL_BLOCK_01 : DBL_BLOCK_10,
-                (invert_colors) ? DBL_BLOCK_11 : DBL_BLOCK_00,
-            };
-            const char modules_per_block_v = 2;
-            const char modules_per_block_h = 1;
-            const char border_leftover_v = (border_width % modules_per_block_v);
-
-            const int byte_len =
-                (strlen(DBL_BLOCK_11) * l + strlen(EOL)) * l +
-                ((paint) ? strlen(BGBK_FGWH) + strlen(BGDF_FGDF) : 0) * l;
-            text = malloc(byte_len + 1);
-            /* Move cursor to the beginning of *text */
-            text[0] = '\0';
-
-            /* Top border */
-            for (iv = 0; iv < border_width - border_leftover_v; iv += modules_per_block_v) {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-                }
-
-                /* Append top border double-module blocks */
-                for (ih = 0; ih < l; ih++) {
-                    strcat(text, blocks[B_00]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-
-            /* Left border, data, right border */
-            for (iv = -border_leftover_v; iv < resolution; iv += modules_per_block_v) {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-                }
-
-                /* Append left border double-module blocks */
-                for (ih = 0; ih < border_width; ih += modules_per_block_h) {
-                    strcat(text, blocks[B_00]);
-                }
-
-                /* Append data double-module blocks */
-                bool is_top_half_border_iter = (iv == -1) ? true : false;
-                bool is_last_data_row_iter = (iv == resolution - 1) ? true : false;
-                for (ih = 0; ih < resolution; ih += modules_per_block_h) {
-                    unsigned char block_mask = B_00;
-
-                    if (is_top_half_border_iter) {
-                        if (data[iv * resolution + ih + resolution] & 1) {
-                            block_mask += B_01;
-                        }
-                    } else {
-                        if (data[iv * resolution + ih] & 1) {
-                            block_mask += B_10;
-                        }
-
-                        if (!is_last_data_row_iter && data[iv * resolution + ih + resolution] & 1) {
-                            block_mask += B_01;
-                        }
-                    }
-
-                    strcat(text, blocks[block_mask]);
-                }
-
-                /* Append right border double-module blocks */
-                for (ih = 0; ih < border_width; ih += modules_per_block_h) {
-                    strcat(text, blocks[B_00]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-
-            /* Bottom border */
-            for (iv = modules_per_block_v; iv < border_width; iv += modules_per_block_v) {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-                }
-
-                /* Append double-module blocks */
-                for (ih = 0; ih < l; ih += modules_per_block_h) {
-                    strcat(text, blocks[B_00]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-
-            /* Trailing double-module blocks for bottom border */
-            {
-                /* Set palette */
-                if (paint) {
-                    strcat(text, BGBK_FGWH);
-                    /* Avoid coloring last (transparent) double-line */
-                    if (!invert_colors) {
-                        strcat(text, BG_DF);
-                    }
-                }
-
-                /* Append double-module blocks */
-                for (ih = 0; ih < l; ih += modules_per_block_h) {
-                    strcat(text, blocks[(invert_colors) ? B_00 : B_01]);
-                }
-
-                /* Reset palette */
-                if (paint) {
-                    strcat(text, BGDF_FGDF);
-                }
-
-                /* Put newline */
-                strcat(text, EOL);
-            }
-        }
+        fputs(EOL, out);
     }
 
-    return text;
+    return ferror(out) ? -1 : 0;
 }
 
 QRencodeMode get_qr_encode_mode(const char *encode_mode)
@@ -911,24 +448,16 @@ int main(int argc, char *argv[])
         options.plain = true;
     }
 
-    /* Convert QR code data into text */
-    char *qr_code_text = qr_data_to_text(qr, options.border, options.invert,
-                                 !options.plain, options.large,
-                                 options.compact);
-
     /* Output QR code as text */
-    if (qr_code_text) {
-        printf("%s", qr_code_text);
-    } else {
-        print_error("failed to convert QR code data into text");
+    if (print_qr(stdout, qr, options.border, options.invert, !options.plain,
+                 options.large ? (options.compact ? 2 : 4)
+                               : (options.compact ? 1 : 2),
+                 options.large ? 2 : 1) != 0) {
+        print_error("unable to write output");
         ret = 1;
     }
 
-    /* Clean up */
-    if (qr != NULL) {
-        QRcode_free(qr);
-    }
-    free(qr_code_text);
+    QRcode_free(qr);
 
 exit:
     free(stdin_buf);
