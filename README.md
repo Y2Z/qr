@@ -13,12 +13,12 @@ Print Unicode-friendly QR Codes® straight in your terminal!
     <summary><strong>Build dependencies</strong></summary>
     <br />
 
- - [libqrencode](https://github.com/fukuchi/libqrencode)
+ - [libqrencode](https://github.com/fukuchi/libqrencode) and [zlib](https://zlib.net)
    ###### Resolve on Ubuntu or Debian
-       $ apt-get install libqrencode-dev
+       $ apt-get install libqrencode-dev zlib1g-dev
    ###### Resolve on macOS
        $ brew install qrencode
-   ###### Build from source
+   ###### Build libqrencode from source
        $ git clone https://github.com/fukuchi/libqrencode.git && cd libqrencode
        $ ./configure --prefix=/usr/local
        $ make
@@ -64,16 +64,137 @@ or
 
     Options:
     -m  QR mode       [na8k] (n = number, a = alphabet, 8 = 8-bit, k = Kanji)
-    -v  QR version    [1-40]
+    -v  QR version    [1-40] (the default is 10 for -a)
     -e  QR EC level   [lmqh] or [1-4]
     -l  use two characters per block
     -c  compact mode
     -b  border width  [1-4] (the default is 1)
     -i  invert colors
     -p  force colorless output
+    -u  ensure output has UTF-8 BOM
+    -a  animate data  [bbqr|bbqr-hex|bbqr-base32|bbqr-zlib|ur|numbered|txqr]
+    -t  data type     [auto|psbt|tx|json|cbor|text|binary] (for -a)
+    -f  frame rate    [1-30] (frames per second, the default is 4)
+    -n  number of frames to output (for -a)
+    -r  print frame contents instead of QR codes (for -a)
     -h  print help info and exit
     -V  print version info and exit
 
+
+## Animated QR Codes
+
+Data that is too large for a single QR Code can be split into a series of
+smaller ones that play as an animation, which phones and hardware wallets
+scan one frame after another.  This is how air-gapped Bitcoin wallets pass
+around PSBTs and transactions, but works for any file.
+
+    $ qr -a bbqr < transaction.psbt
+
+In a terminal the frames loop in place until you press Ctrl+C.  When the
+output is not a terminal, every frame is printed once, one after another.
+With `-r` the content of each frame is printed instead of QR Codes, each
+followed by a newline, which is handy for piping into other tools (TXQR
+frames are binary and may contain newlines themselves).
+
+There are several formats, and the one to use is whichever the receiving
+wallet or app can scan:
+
+Format     | `-a`       | Fountain codes | Typical scanners
+-----------|------------|----------------|-------------------------------------
+BBQr       | `bbqr`     | no             | COLDCARD Q, Sparrow Wallet, Nunchuk
+UR         | `ur`       | yes            | Sparrow Wallet, Keystone, Passport, SeedSigner, Jade
+pMofN      | `numbered` | no             | Specter Desktop, Specter DIY, Krux
+TXQR       | `txqr`     | yes            | txqr-reader
+
+Without fountain codes every frame has to be caught at least once, so a
+missed frame means waiting for the loop to come around again.  With fountain
+codes any frames will do, as long as there are enough of them.
+
+ - `-v` sets the QR version of every frame (10 by default, 57×57 modules).
+   Lower versions are easier to scan but need more frames.
+ - `-f` sets the frame rate (4 frames per second by default).
+ - `-n` sets how many frames to output.  The animation then stops by itself
+   instead of looping, and when printing frames (rather than playing them)
+   the sequence repeats, or for fountain codes keeps generating new frames.
+ - `-e`, `-c`, `-l`, `-i` and `-b` work the same way as for single QR Codes.
+ - `-t` tells what kind of data it is.  By default PSBTs are detected
+   automatically, whether they are binary, base64 (as printed by Bitcoin Core
+   and most wallets) or hex.  Use `-t tx` for a transaction, which can be
+   binary or hex.  Anything else is sent as text if it's valid UTF-8, and as
+   binary data otherwise.
+
+#### BBQr
+
+[BBQr](https://github.com/coinkite/BBQr) (Better Bitcoin QR) by Coinkite.
+Every frame starts with an 8-character header (`B$`, the encoding, the file
+type, the number of frames and the frame number), so frames can be scanned in
+any order, but every one of them is needed.
+
+    $ qr -a bbqr < transaction.psbt
+    $ bitcoin-cli walletprocesspsbt "$psbt" | jq -r .psbt | qr -a bbqr
+    $ qr -a bbqr -t tx 0200000001...
+
+ - `bbqr` compresses the data with zlib when that makes it smaller, and uses
+   base32 otherwise.  This is what COLDCARD Q recommends.
+ - `bbqr-zlib`, `bbqr-base32` and `bbqr-hex` force one encoding.
+
+Scan with: COLDCARD Q, Sparrow Wallet, Nunchuk, Fully Noded, Krux, and other
+[wallets compatible with COLDCARD Q](https://coldcard.com/docs/compatible-wallets/).
+
+To check the frames on a computer, use Coinkite's reference decoder:
+
+    $ pip install bbqr
+    $ qr -a bbqr -r < transaction.psbt | bbqr decode
+
+
+#### UR
+
+[Uniform Resources](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2020-005-ur.md)
+by Blockchain Commons.  Frames look like `UR:CRYPTO-PSBT/7-12/LPAS...`, and
+data that fits into a single frame is shown as a plain `UR:CRYPTO-PSBT/...`.
+
+    $ qr -a ur < transaction.psbt
+
+After the first round of frames (one per piece of data), UR keeps generating
+new frames that mix several pieces together using
+[fountain codes](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2024-001-multipart-ur.md),
+so the animation never repeats: a scanner that misses some frames catches up
+from any later ones, instead of waiting for the whole loop to come around.
+
+PSBTs are sent as `crypto-psbt`, which is what most wallets expect.
+Everything else is sent as `bytes`.
+
+Scan with: Sparrow Wallet, Keystone, Foundation Passport, SeedSigner,
+Blockstream Jade, Krux and other wallets listed by
+[Blockchain Commons](https://developer.blockchaincommons.com/ur/implementations/).
+
+#### Numbered parts (pMofN)
+
+The simplest scheme, used by Specter: the data is split into text parts that
+start with `p1of3 `, `p2of3 ` and so on.  PSBTs are sent in base64,
+transactions in hex, text as is, and other binary data in base64.
+
+    $ qr -a numbered < transaction.psbt
+
+Every part is needed, in any order.  Krux accepts up to 99 parts.
+
+Scan with: Specter Desktop, Specter DIY and Krux.
+
+#### TXQR
+
+[TXQR](https://github.com/divan/txqr) by Ivan Daniluk, a research project
+on transferring files over animated QR codes with fountain codes.  Frames
+start with `<block>/<chunk size>/<total size>|`, followed by the data of
+several pieces XORed together.
+
+    $ qr -a txqr < notes.txt
+
+The first round of frames is identical to what TXQR's own encoder makes, and
+like UR, it then keeps generating new frames instead of repeating.  Data is
+sent as text, the same way as for numbered parts.  Since frames carry raw
+bytes, plain ASCII text is the safest choice.
+
+Scan with: [txqr-reader](https://github.com/divan/txqr-reader) (iOS).
 
 ## How to remove
 
