@@ -85,6 +85,7 @@ Options:
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
+  -u  ensure output has UTF-8 BOM
   -h  print help info and exit
   -V  print version info and exit
 
@@ -108,6 +109,7 @@ Options:
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
+  -u  ensure output has UTF-8 BOM
   -h  print help info and exit
   -V  print version info and exit
 
@@ -129,6 +131,7 @@ Options:
   -b  border width  [[1-4]] (the default is 1)
   -i  invert colors
   -p  force colorless output
+  -u  ensure output has UTF-8 BOM
   -h  print help info and exit
   -V  print version info and exit
 
@@ -136,8 +139,8 @@ Options:
 AT_CLEANUP
 
 ## 13
-AT_SETUP([prints version informaton when version flag is set])
-AT_CHECK_UNQUOTED([./../../qr -V], [0], [qr 1.0.0
+AT_SETUP([prints version information when version flag is set])
+AT_CHECK_UNQUOTED([./../../qr -V], [0], [qr ${VERSION}
 ], [])
 AT_CLEANUP
 
