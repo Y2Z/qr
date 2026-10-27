@@ -90,12 +90,12 @@ typedef unsigned char bool;
 #define B_1111 15
 
 typedef struct {
-    char  encode_mode;
+    QRencodeMode encode_mode;
     int   version;
-    char  ec_level;
+    QRecLevel ec_level;
     bool  large;
     bool  compact;
-    short border;
+    int   border;
     bool  invert;
     bool  plain;
     bool  unicode;
@@ -176,7 +176,21 @@ char *read_stream(FILE *stream)
 
 static inline bool str_has_utf8_bom(const char *string)
 {
-    return (strcmp(string, utf8_bom) == 0);
+    return (strncmp(string, utf8_bom, strlen(utf8_bom)) == 0);
+}
+
+/* Parse a whole decimal number within [min, max] */
+bool parse_int(const char *string, int min, int max, int *result)
+{
+    char *end;
+    long value = strtol(string, &end, 10);
+
+    if (end == string || *end != '\0' || value < min || value > max) {
+        return false;
+    }
+
+    *result = (int)value;
+    return true;
 }
 
 char *qr_data_to_text(const QRcode *code, const char border_width,
@@ -669,9 +683,13 @@ char *qr_data_to_text(const QRcode *code, const char border_width,
     return text;
 }
 
-QRencodeMode get_qr_encode_mode(const char encode_mode)
+QRencodeMode get_qr_encode_mode(const char *encode_mode)
 {
-    switch (encode_mode) {
+    if (encode_mode[0] == '\0' || encode_mode[1] != '\0') {
+        return QR_MODE_NUL;
+    }
+
+    switch (encode_mode[0]) {
         case 'n':
         case 'N':
             return QR_MODE_NUM;
@@ -692,9 +710,14 @@ QRencodeMode get_qr_encode_mode(const char encode_mode)
     }
 }
 
-QRecLevel get_qr_ec_level(const char ec_level)
+/* Returns -1 for an invalid level */
+int get_qr_ec_level(const char *ec_level)
 {
-    switch (ec_level) {
+    if (ec_level[0] == '\0' || ec_level[1] != '\0') {
+        return -1;
+    }
+
+    switch (ec_level[0]) {
         case '1':
         case 'l':
         case 'L':
@@ -720,6 +743,31 @@ QRecLevel get_qr_ec_level(const char ec_level)
     }
 }
 
+QRcode *encode(const char *str, const int version, const QRecLevel level,
+               const QRencodeMode mode)
+{
+    QRinput *input;
+    QRcode *code = NULL;
+
+    /* QRcode_encodeString() picks the optimal mix of segment modes,
+       but only accepts 8-bit and Kanji as hints */
+    if (mode == QR_MODE_8 || mode == QR_MODE_KANJI) {
+        return QRcode_encodeString(str, version, level, mode, 1);
+    }
+
+    /* Force numeric or alphanumeric mode for the whole input */
+    if ((input = QRinput_new2(version, level)) == NULL) {
+        return NULL;
+    }
+    if (QRinput_append(input, mode, (int)strlen(str),
+                       (const unsigned char *)str) == 0) {
+        code = QRcode_encodeInput(input);
+    }
+    QRinput_free(input);
+
+    return code;
+}
+
 int main(int argc, char *argv[])
 {
     int ret = 0;
@@ -729,9 +777,9 @@ int main(int argc, char *argv[])
 
     /* Default options */
     Options options = {
-        .encode_mode = '8',
+        .encode_mode = QR_MODE_8,
         .version = 0,
-        .ec_level = '1',
+        .ec_level = QR_ECLEVEL_L,
         .large = false,
         .compact = false,
         .border = 1,
@@ -754,15 +802,23 @@ int main(int argc, char *argv[])
 
         switch (c) {
             case 'm':
-                options.encode_mode = optarg[0];
+                options.encode_mode = get_qr_encode_mode(optarg);
+                if (options.encode_mode == QR_MODE_NUL) {
+                    goto invalid_options;
+                }
                 break;
 
             case 'v':
-                options.version = atoi(optarg);
+                if (!parse_int(optarg, 0, QRSPEC_VERSION_MAX, &options.version)) {
+                    goto invalid_options;
+                }
                 break;
 
             case 'e':
-                options.ec_level = optarg[0];
+                if ((c = get_qr_ec_level(optarg)) < 0) {
+                    goto invalid_options;
+                }
+                options.ec_level = (QRecLevel)c;
                 break;
 
             case 'l':
@@ -774,7 +830,9 @@ int main(int argc, char *argv[])
                 break;
 
             case 'b':
-                options.border = atoi(optarg);
+                if (!parse_int(optarg, 1, 4, &options.border)) {
+                    goto invalid_options;
+                }
                 break;
 
             case 'i':
@@ -803,19 +861,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    /* Validate options */
-    if (
-        options.version < 0 || options.version > QRSPEC_VERSION_MAX ||
-        get_qr_ec_level(options.ec_level) < 0 ||
-        get_qr_encode_mode(options.encode_mode) == QR_MODE_NUL ||
-        options.border < 1 || options.border > 4
-    ) {
-        print_error("invalid options");
-        fprintf(stderr, "%s" EOL, help_msg);
-        ret = 1;
-        goto exit;
-    }
-
     /* Read input from STDIN only if no STRING was given */
     if (str == NULL && !isatty(STDIN_FILENO)) {
         if ((str = stdin_buf = read_stream(stdin)) == NULL) {
@@ -837,23 +882,22 @@ int main(int argc, char *argv[])
     /* Generate and output QR code */
     /*******************************/
 
-    QRcode *qr;
-
+    char *str_bom = NULL;
     if (options.unicode && !str_has_utf8_bom(str)) {
         /* Prepend UTF-8 BOM to the input string */
-        char str_utf8[strlen(utf8_bom) + strlen(str) + 1];
-        memset(str_utf8, '\0', sizeof(str_utf8));
-        strncpy(str_utf8, utf8_bom, sizeof(str_utf8));
-        strncat(str_utf8, str, sizeof(str_utf8));
-        str_utf8[strlen(utf8_bom) + strlen(str)] = '\0';
-        qr = QRcode_encodeString(str_utf8, options.version,
-                                 get_qr_ec_level(options.ec_level),
-                                 get_qr_encode_mode(options.encode_mode), true);
-    } else {
-        qr = QRcode_encodeString(str, options.version,
-                                 get_qr_ec_level(options.ec_level),
-                                 get_qr_encode_mode(options.encode_mode), true);
+        if ((str_bom = malloc(strlen(utf8_bom) + strlen(str) + 1)) == NULL) {
+            print_error("out of memory");
+            ret = 1;
+            goto exit;
+        }
+        strcpy(str_bom, utf8_bom);
+        strcat(str_bom, str);
+        str = str_bom;
     }
+
+    QRcode *qr = encode(str, options.version, options.ec_level,
+                        options.encode_mode);
+    free(str_bom);
 
     /* Bail out if unable to successfully execute QRcode_encodeString() */
     if (qr == NULL) {
@@ -889,4 +933,10 @@ int main(int argc, char *argv[])
 exit:
     free(stdin_buf);
     return ret;
+
+invalid_options:
+    print_error("invalid options");
+    fprintf(stderr, EOL "%s" EOL, help_msg);
+    ret = 1;
+    goto exit;
 }
