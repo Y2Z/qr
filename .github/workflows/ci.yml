@@ -37,6 +37,12 @@ jobs:
           qrencode \
           zbar
         brew install --cask font-freefont
+        # ImageMagick can't look fonts up by name on macOS, so pass the file
+        FONT="$(find ~/Library/Fonts /Library/Fonts -iname 'FreeMono.*' 2>/dev/null | head -n 1)"
+        test -n "$FONT"
+        echo "FONT=$FONT" >> "$GITHUB_ENV"
+        # Absorb one-time font cache warnings before the tests check stderr
+        magick -font "$FONT" label:warmup png:- > /dev/null
         echo "CPPFLAGS=-I$(brew --prefix)/include" >> "$GITHUB_ENV"
         echo "LDFLAGS=-L$(brew --prefix)/lib" >> "$GITHUB_ENV"
 
@@ -44,7 +50,7 @@ jobs:
       run: make CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
 
     - name: Test
-      run: make test < /dev/null
+      run: make test FONT="${FONT:-FreeMono}" < /dev/null
 
     - name: Print test logs
       if: ${{ failure() }}

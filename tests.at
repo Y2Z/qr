@@ -8,63 +8,63 @@ AT_BANNER([QR-Code tests])
 ## 1
 AT_SETUP([generates proper QR Code])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 2
 AT_SETUP([generates proper QR Code using inverted colors])
 AT_CHECK_UNQUOTED([
-  convert -background white -fill black -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -i "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background white -fill black -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -i "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 3
 AT_SETUP([generates proper QR Code using compact blocks])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -c "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -c "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 4
 AT_SETUP([generates proper QR Code using compact blocks and inverted colors])
 AT_CHECK_UNQUOTED([
-  convert -background white -fill black -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -ci "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background white -fill black -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -ci "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 5
 AT_SETUP([generates proper QR Code using large blocks])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font "${FONT}" -pointsize 4 -interline-spacing -1 label:"$(./../../qr -l "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 4 -interline-spacing -1 label:"$(./../../qr -l "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 6
 AT_SETUP([generates proper QR Code using large blocks and inverted colors])
 AT_CHECK_UNQUOTED([
-  convert -background white -fill black -font "${FONT}" -pointsize 4 -interline-spacing -1 label:"$(./../../qr -li "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background white -fill black -font "${FONT}" -pointsize 4 -interline-spacing -1 label:"$(./../../qr -li "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 7
 AT_SETUP([generates proper QR Code using large compact blocks])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font "${FONT}" -pointsize 4 -interline-spacing -1 label:"$(./../../qr -lc "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 4 -interline-spacing -1 label:"$(./../../qr -lc "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 8
 AT_SETUP([generates proper QR Code using large compact blocks and inverted colors])
 AT_CHECK_UNQUOTED([
-  convert -background white -fill black -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -lci "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background white -fill black -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -lci "${INPUT}")" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
 ## 9
 AT_SETUP([generates proper QR Code with default settings using stdin])
 AT_CHECK_UNQUOTED([
-  convert -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(echo "${INPUT}" | ./../../qr)" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(printf "%s" "${INPUT}" | ./../../qr)" png:- | zbarimg -q png:- | grep -q "QR-Code:${INPUT}" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
@@ -180,8 +180,8 @@ AT_CLEANUP
 ## 20
 AT_SETUP([generates proper QR Code in numeric and alphanumeric modes])
 AT_CHECK([
-  convert -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -m n 0123456789)" png:- | zbarimg -q png:- | grep -q "QR-Code:0123456789" || exit 1
-  convert -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -m a HELLO-WORLD)" png:- | zbarimg -q png:- | grep -q "QR-Code:HELLO-WORLD" || exit 1
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -m n 0123456789)" png:- | zbarimg -q png:- | grep -q "QR-Code:0123456789" || exit 1
+  ${CONVERT} -background black -fill white -font "${FONT}" -pointsize 9 -interline-spacing -1 label:"$(./../../qr -m a HELLO-WORLD)" png:- | zbarimg -q png:- | grep -q "QR-Code:HELLO-WORLD" || exit 1
 ], [0], [], [])
 AT_CLEANUP
 
