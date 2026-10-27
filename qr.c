@@ -6,16 +6,14 @@
  *
  */
 
-#include <getopt.h>
-#include <locale.h>
 #include <qrencode.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-/* STDIN read buffer chunk size */
-#define STDIN_CHUNKSIZE 64
+/* Initial size of the buffer used for reading STDIN */
+#define STDIN_BUFSIZE 256
 
 /* Single-module blocks (large size) */
 #define BLOCK_0 "  "
@@ -139,6 +137,41 @@ void print_version(void)
 void print_error(const char *message)
 {
     fprintf(stderr, "Error: %s" EOL, message);
+}
+
+/* Read the whole stream into a NUL-terminated buffer (caller frees it) */
+char *read_stream(FILE *stream)
+{
+    size_t capacity = STDIN_BUFSIZE;
+    size_t length = 0;
+    size_t n;
+    char *buffer = malloc(capacity);
+    char *tmp;
+
+    if (buffer == NULL) {
+        return NULL;
+    }
+
+    while ((n = fread(buffer + length, 1, capacity - length - 1, stream)) > 0) {
+        length += n;
+
+        if (length == capacity - 1) {
+            capacity *= 2;
+            if ((tmp = realloc(buffer, capacity)) == NULL) {
+                free(buffer);
+                return NULL;
+            }
+            buffer = tmp;
+        }
+    }
+
+    if (ferror(stream)) {
+        free(buffer);
+        return NULL;
+    }
+
+    buffer[length] = '\0';
+    return buffer;
 }
 
 static inline bool str_has_utf8_bom(const char *string)
@@ -690,14 +723,9 @@ QRecLevel get_qr_ec_level(const char ec_level)
 int main(int argc, char *argv[])
 {
     int ret = 0;
-    char *str = NULL;
+    const char *str = NULL;  /* Input string */
+    char *stdin_buf = NULL;  /* Owns the input when it comes from STDIN */
     int c = 0;
-
-    // Enable wide-character support
-    char *p = setlocale(LC_ALL, "");
-    if (!p) {
-        print_error("unable to unset locale");
-    }
 
     /* Default options */
     Options options = {
@@ -711,30 +739,15 @@ int main(int argc, char *argv[])
         .plain = false
     };
 
-    /* Process STDIN (if any) */
-    if (!isatty(STDIN_FILENO)) {
-        size_t bufsize = STDIN_CHUNKSIZE;
-        str = malloc(bufsize);
-        ssize_t stdin_read_size = 0;
-        size_t total_bytes = 0;
-
-        while ((stdin_read_size = read(STDIN_FILENO, str, STDIN_CHUNKSIZE)) > 0) {
-            total_bytes += stdin_read_size;
-            bufsize += STDIN_CHUNKSIZE;
-            str = realloc(str, bufsize);
-
-            if (str == NULL) {
-                print_error("out of memory");
+    /* Parse CLI arguments (options may come before or after STRING) */
+    while (optind < argc) {
+        if ((c = getopt(argc, argv, "m:v:e:lcb:ipuhV")) == -1) {
+            if (str != NULL) {
+                print_error("too many arguments");
+                fprintf(stderr, EOL "%s" EOL, help_msg);
                 ret = 1;
                 goto exit;
             }
-        }
-    }
-
-    /* Parse CLI arguments */
-    while (optind < argc) {
-        if ((c = getopt(argc, argv, "m:v:e:lcb:ipuhV")) == -1) {
-            free(str);
             str = argv[optind++];
             continue;
         }
@@ -803,17 +816,13 @@ int main(int argc, char *argv[])
         goto exit;
     }
 
-    /* Validate arguments */
-    if (optind != argc) {
-        if (str != NULL) {
-            print_error("too many arguments");
-            fprintf(stderr, "%s" EOL, help_msg);
+    /* Read input from STDIN only if no STRING was given */
+    if (str == NULL && !isatty(STDIN_FILENO)) {
+        if ((str = stdin_buf = read_stream(stdin)) == NULL) {
+            print_error("unable to read from STDIN");
             ret = 1;
             goto exit;
         }
-
-        str = malloc(strlen(argv[optind])+1);
-        memcpy(&str, &argv[optind], strlen(argv[optind])+1);
     }
 
     /* Check input */
@@ -878,5 +887,6 @@ int main(int argc, char *argv[])
     free(qr_code_text);
 
 exit:
+    free(stdin_buf);
     return ret;
 }

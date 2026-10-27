@@ -150,3 +150,24 @@ AT_CHECK_UNQUOTED([./../../qr "${EXTRA_LONG_INPUT}"], [1], [], [\
 Error: failed to generate QR code
 ])
 AT_CLEANUP
+
+## 15
+AT_SETUP([fails when given more than one STRING])
+AT_CHECK([./../../qr foo bar 2>&1 | head -n 1], [0], [Error: too many arguments
+])
+AT_CLEANUP
+
+## 16
+AT_SETUP([accepts options after STRING])
+AT_CHECK([test "$(./../../qr -p foo -i -c)" = "$(./../../qr -p -i -c foo)"], [0], [], [])
+AT_CLEANUP
+
+## 17
+AT_SETUP([reads all of STDIN])
+AT_CHECK([s="$(printf '%s' "${EXTRA_LONG_INPUT}" | cut -c 1-300)"; test "$(printf '%s' "$s" | ./../../qr -p)" = "$(./../../qr -p "$s")"], [0], [], [])
+AT_CLEANUP
+
+## 18
+AT_SETUP([prefers STRING over STDIN])
+AT_CHECK([test "$(echo bar | ./../../qr -p foo)" = "$(./../../qr -p foo < /dev/null)"], [0], [], [])
+AT_CLEANUP
