@@ -1,11 +1,11 @@
-FROM alpine:3.13.5
+FROM alpine:3.22
 
 RUN apk update && \
     apk add --no-cache \
         build-base \
         libqrencode-dev
 
-COPY Makefile qr.c .
+COPY Makefile config.mk qr.c ./
 
 RUN make clean && \
     make -j 16 && \

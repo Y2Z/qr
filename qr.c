@@ -8,7 +8,6 @@
 
 #include <getopt.h>
 #include <locale.h>
-#include <math.h>
 #include <qrencode.h>
 #include <stdio.h>
 #include <stdlib.h>

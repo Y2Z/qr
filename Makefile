@@ -3,8 +3,8 @@
 
 include config.mk
 
-$(PROG):
-	$(CC) $(PROG).c $(CFLAGS) $(LIBS) -DVERSION="\"$(VERSION)\"" -o $(PROG)
+$(PROG): $(PROG).c config.mk
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DVERSION="\"$(VERSION)\"" $(PROG).c $(LDFLAGS) $(LIBS) -o $(PROG)
 
 all: $(PROG)
 .PHONY: all

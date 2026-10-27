@@ -2,8 +2,8 @@
 
 DOCKER=docker
 
-if which podman 2>&1 > /dev/null; then
+if command -v podman > /dev/null 2>&1; then
     DOCKER=podman
 fi
 
-$DOCKER run --rm y2z/qr qr "$@"
+$DOCKER run --rm -i y2z/qr qr "$@"
