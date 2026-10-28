@@ -12,9 +12,6 @@ on:
 permissions:
   contents: write
 
-env:
-  LIBQRENCODE_VERSION: v4.1.1
-
 jobs:
   linux:
 
@@ -34,13 +31,9 @@ jobs:
     # Alpine (musl) makes fully static binaries that run on any distribution
     - name: Build static binary
       run: |
-        docker run --rm -v "$PWD":/src -w /src -e LIBQRENCODE_VERSION alpine:3.22 sh -euc '
-          apk add --no-cache build-base cmake git zlib-dev zlib-static
-          git clone -q --depth 1 --branch "$LIBQRENCODE_VERSION" https://github.com/fukuchi/libqrencode /tmp/libqrencode
-          cmake -S /tmp/libqrencode -B /tmp/libqrencode/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DWITH_TOOLS=NO -DCMAKE_INSTALL_PREFIX=/tmp/deps
-          cmake --build /tmp/libqrencode/build
-          cmake --install /tmp/libqrencode/build
-          make CPPFLAGS=-I/tmp/deps/include LDFLAGS="-static -s -L/tmp/deps/lib"
+        docker run --rm -v "$PWD":/src -w /src alpine:3.22 sh -euc '
+          apk add --no-cache build-base zlib-dev zlib-static
+          make LDFLAGS="-static -s"
         '
 
     - name: Check binary
@@ -76,27 +69,20 @@ jobs:
         msystem: UCRT64
         update: true
         install: >-
-          git
           make
-          mingw-w64-ucrt-x86_64-cmake
           mingw-w64-ucrt-x86_64-gcc
-          mingw-w64-ucrt-x86_64-ninja
           mingw-w64-ucrt-x86_64-zlib
 
     - name: Build static binary
       shell: msys2 {0}
       run: |
-        git clone -q --depth 1 --branch "$LIBQRENCODE_VERSION" https://github.com/fukuchi/libqrencode libqrencode
-        cmake -G Ninja -S libqrencode -B libqrencode/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DWITH_TOOLS=NO -DCMAKE_INSTALL_PREFIX="$(cygpath -m "$PWD/deps")"
-        cmake --build libqrencode/build
-        cmake --install libqrencode/build
-        make CC=gcc CPPFLAGS=-Ideps/include LDFLAGS="-static -s -Ldeps/lib"
+        make CC=gcc LDFLAGS="-static -s"
 
     - name: Check binary
       shell: msys2 {0}
       run: |
         objdump -p qr.exe | grep "DLL Name"
-        if objdump -p qr.exe | grep -iE "DLL Name: (libqrencode|zlib|libz|libgcc|libwinpthread)"; then
+        if objdump -p qr.exe | grep -iE "DLL Name: (zlib|libz|libgcc|libwinpthread)"; then
           echo "qr.exe depends on non-system DLLs" >&2
           exit 1
         fi

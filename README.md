@@ -18,8 +18,7 @@ binaries:
  - `qr-linux-x86_64.tar.gz` and `qr-linux-arm64.tar.gz` for Linux, each
    containing a statically linked `qr` that runs on any distribution
 
-They have [libqrencode](https://github.com/fukuchi/libqrencode)
-(LGPL-2.1-or-later) and [zlib](https://zlib.net) built in.
+They have [zlib](https://zlib.net) built in.
 
 
 ## How to build
@@ -30,19 +29,14 @@ They have [libqrencode](https://github.com/fukuchi/libqrencode)
     <summary><strong>Build dependencies</strong></summary>
     <br />
 
- - [libqrencode](https://github.com/fukuchi/libqrencode) and [zlib](https://zlib.net)
+ - [zlib](https://zlib.net) (the QR Code encoder is built in)
    ###### Resolve on Ubuntu or Debian
-       $ apt-get install libqrencode-dev zlib1g-dev
+       $ apt-get install zlib1g-dev
    ###### Resolve on macOS
-       $ brew install qrencode
+       Nothing to do: zlib comes with the system
    ###### Resolve on Windows (in an [MSYS2](https://www.msys2.org) UCRT64 shell)
-       $ pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-qrencode mingw-w64-ucrt-x86_64-zlib
+       $ pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-zlib
        $ make CC=gcc
-   ###### Build libqrencode from source
-       $ git clone https://github.com/fukuchi/libqrencode.git && cd libqrencode
-       $ ./configure --prefix=/usr/local
-       $ make
-       # make install
 
 </details>
 

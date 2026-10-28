@@ -31,7 +31,6 @@ jobs:
           unzip
           mingw-w64-ucrt-x86_64-gcc
           mingw-w64-ucrt-x86_64-imagemagick
-          mingw-w64-ucrt-x86_64-qrencode
           mingw-w64-ucrt-x86_64-zbar
           mingw-w64-ucrt-x86_64-zlib
 
