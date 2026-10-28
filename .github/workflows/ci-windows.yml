@@ -24,13 +24,13 @@ jobs:
         msystem: UCRT64
         update: true
         install: >-
-          autoconf
           curl
           diffutils
           make
           unzip
           mingw-w64-ucrt-x86_64-gcc
           mingw-w64-ucrt-x86_64-imagemagick
+          mingw-w64-ucrt-x86_64-python
           mingw-w64-ucrt-x86_64-zbar
           mingw-w64-ucrt-x86_64-zlib
 
@@ -44,10 +44,6 @@ jobs:
 
     - name: Test
       run: make test CC=gcc FONT="$(cygpath -m "$PWD/FreeMono.ttf")" < /dev/null
-
-    - name: Print test logs
-      if: ${{ failure() }}
-      run: cat tests.dir/*/*.log
 
     - name: Run
       run: ./qr.exe Success

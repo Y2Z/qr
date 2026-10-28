@@ -22,8 +22,7 @@ jobs:
     - name: Resolve dependencies
       run: |
         sudo apt-get update && \
-        sudo apt-get install autoconf \
-          fonts-freefont-ttf \
+        sudo apt-get install fonts-freefont-ttf \
           imagemagick \
           zbar-tools \
           zlib1g-dev
@@ -33,10 +32,6 @@ jobs:
 
     - name: Test
       run: make test < /dev/null
-
-    - name: Print test logs
-      if: ${{ failure() }}
-      run: cat tests.dir/*/*.log
 
     - name: Install
       run: sudo make PREFIX=/usr/local install
