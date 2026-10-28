@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: CC0-1.0
+// SPDX-License-Identifier: 0BSD
 
 /*
  * QR Code is a registered trademark of DENSO WAVE INCORPORATED in Japan
@@ -16,6 +16,12 @@
 #include <time.h>
 #include <unistd.h>
 #include <zlib.h>
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
+#endif
 
 /* Initial size of the buffer used for reading STDIN */
 #define STDIN_BUFSIZE 256
@@ -1711,8 +1717,58 @@ fail:
 }
 
 /*****************************************************************************/
-/* Playback                                                                  */
+/* Platform specifics                                                        */
 /*****************************************************************************/
+
+/* MinGW's getopt() reorders arguments, unless told not to with a '+' */
+#ifdef _WIN32
+#define GETOPT_PREFIX "+"
+#else
+#define GETOPT_PREFIX ""
+#endif
+
+#ifdef _WIN32
+static UINT saved_output_cp = 0;
+static DWORD saved_console_mode = 0;
+
+static void restore_console(void)
+{
+    SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), saved_console_mode);
+    SetConsoleOutputCP(saved_output_cp);
+}
+#endif
+
+/*
+ * Prepare standard streams, and tell whether STDOUT is a terminal that
+ * understands UTF-8 and ANSI escape codes.
+ */
+static bool setup_terminal(void)
+{
+#ifdef _WIN32
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode;
+
+    /* No newline conversions: data may be binary, output must be exact */
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+
+    /* Only a console has a mode (NUL passes isatty(), for example) */
+    if (!GetConsoleMode(out, &mode)) {
+        return false;
+    }
+    saved_console_mode = mode;
+    if (!SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+        return false;  /* Older than Windows 10 */
+    }
+    saved_output_cp = GetConsoleOutputCP();
+    SetConsoleOutputCP(CP_UTF8);
+    atexit(restore_console);
+    return true;
+#else
+    return isatty(STDOUT_FILENO);
+#endif
+}
 
 static volatile sig_atomic_t stop_playback = 0;
 
@@ -1721,6 +1777,39 @@ static void on_signal(int signum)
     (void)signum;
     stop_playback = 1;
 }
+
+/* Stop playback on Ctrl+C instead of exiting, so the cursor gets restored */
+static void catch_signals(void)
+{
+#ifdef _WIN32
+    signal(SIGINT, on_signal);
+    signal(SIGTERM, on_signal);
+#else
+    struct sigaction action;
+
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = on_signal;
+    sigaction(SIGINT, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
+#endif
+}
+
+/* Wait for the given number of nanoseconds, or until interrupted */
+static void wait_ns(const long ns)
+{
+#ifdef _WIN32
+    Sleep((DWORD)(ns / 1000000L));
+#else
+    struct timespec delay = { ns / 1000000000L, ns % 1000000000L };
+
+    while (nanosleep(&delay, &delay) != 0 && !stop_playback) {
+    }
+#endif
+}
+
+/*****************************************************************************/
+/* Playback                                                                  */
+/*****************************************************************************/
 
 /* Returns the number of text rows printed, or -1 on error */
 int print_frame(const Animation *anim, const Buffer *frame,
@@ -1764,22 +1853,19 @@ static const Buffer *get_frame(const Animation *anim, const size_t index,
  * otherwise print each frame once (as a QR code, or as text with -r).
  * `count` frames are shown if it isn't 0.
  */
-int play(const Animation *anim, const Options *options, const size_t count)
+int play(const Animation *anim, const Options *options, const size_t count,
+         const bool terminal)
 {
     const long frame_ns = 1000000000L / options->fps;
-    const bool loop = !options->raw && isatty(STDOUT_FILENO) &&
+    const bool loop = !options->raw && terminal &&
                       (anim->count > 1 || count > 1);
     const size_t total = count > 0 ? count : loop ? 0 : anim->count;
-    struct sigaction action;
     Buffer extra = { NULL, 0 };
     size_t i;
     int rows = 0;
 
     if (loop) {
-        memset(&action, 0, sizeof(action));
-        action.sa_handler = on_signal;
-        sigaction(SIGINT, &action, NULL);
-        sigaction(SIGTERM, &action, NULL);
+        catch_signals();
         fputs("\x1b[?25l", stdout);  /* Hide cursor */
     }
 
@@ -1808,11 +1894,8 @@ int play(const Animation *anim, const Options *options, const size_t count)
         }
 
         if (loop) {
-            struct timespec delay = { frame_ns / 1000000000L,
-                                      frame_ns % 1000000000L };
             fflush(stdout);
-            while (nanosleep(&delay, &delay) != 0 && !stop_playback) {
-            }
+            wait_ns(frame_ns);
         }
     }
     free(extra.data);
@@ -1832,6 +1915,7 @@ int main(int argc, char *argv[])
     size_t str_size = 0;     /* Input data length (it may contain NUL bytes) */
     char *stdin_buf = NULL;  /* Owns the input when it comes from STDIN */
     int c = 0;
+    const bool terminal = setup_terminal();
 
     /* Default options */
     Options options = {
@@ -1855,7 +1939,7 @@ int main(int argc, char *argv[])
 
     /* Parse CLI arguments (options may come before or after STRING) */
     while (optind < argc) {
-        if ((c = getopt(argc, argv, "m:v:e:lcb:ipua:t:f:n:rhV")) == -1) {
+        if ((c = getopt(argc, argv, GETOPT_PREFIX "m:v:e:lcb:ipua:t:f:n:rhV")) == -1) {
             if (str != NULL) {
                 print_error("too many arguments");
                 fprintf(stderr, EOL "%s" EOL, help_msg);
@@ -1984,7 +2068,7 @@ int main(int argc, char *argv[])
     }
 
     /* Enforce colorless output mode for non-terminal environments */
-    if (!isatty(STDOUT_FILENO)) {
+    if (!terminal) {
         options.plain = true;
     }
 
@@ -2020,7 +2104,7 @@ int main(int argc, char *argv[])
             if (anim.count == 1 && !version_set) {
                 anim.version = 0;
             }
-            ret = play(&anim, &options, (size_t)options.frames);
+            ret = play(&anim, &options, (size_t)options.frames, terminal);
         } else {
             ret = 1;
         }

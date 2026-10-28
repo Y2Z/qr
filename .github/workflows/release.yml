@@ -1,0 +1,116 @@
+name: Release
+
+# Builds standalone binaries and attaches them to every published release.
+# Can also be run by hand ("Run workflow"), which keeps the binaries as
+# workflow artifacts without touching any release.
+
+on:
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  LIBQRENCODE_VERSION: v4.1.1
+
+jobs:
+  linux:
+
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Alpine (musl) makes fully static binaries that run on any distribution
+    - name: Build static binary
+      run: |
+        docker run --rm -v "$PWD":/src -w /src -e LIBQRENCODE_VERSION alpine:3.22 sh -euc '
+          apk add --no-cache build-base cmake git zlib-dev zlib-static
+          git clone -q --depth 1 --branch "$LIBQRENCODE_VERSION" https://github.com/fukuchi/libqrencode /tmp/libqrencode
+          cmake -S /tmp/libqrencode -B /tmp/libqrencode/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DWITH_TOOLS=NO -DCMAKE_INSTALL_PREFIX=/tmp/deps
+          cmake --build /tmp/libqrencode/build
+          cmake --install /tmp/libqrencode/build
+          make CPPFLAGS=-I/tmp/deps/include LDFLAGS="-static -s -L/tmp/deps/lib"
+        '
+
+    - name: Check binary
+      run: |
+        file qr
+        ldd qr 2>&1 | grep -q "not a dynamic executable"
+        ./qr -V
+        ./qr Success
+
+    - name: Package
+      run: tar -czf qr-linux-${{ matrix.arch }}.tar.gz qr LICENSE
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: qr-linux-${{ matrix.arch }}
+        path: qr-linux-${{ matrix.arch }}.tar.gz
+
+    - name: Upload to release
+      if: github.event_name == 'release'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release upload "${{ github.event.release.tag_name }}" qr-linux-${{ matrix.arch }}.tar.gz --clobber
+
+  windows:
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          git
+          make
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-zlib
+
+    - name: Build static binary
+      shell: msys2 {0}
+      run: |
+        git clone -q --depth 1 --branch "$LIBQRENCODE_VERSION" https://github.com/fukuchi/libqrencode libqrencode
+        cmake -G Ninja -S libqrencode -B libqrencode/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DWITH_TOOLS=NO -DCMAKE_INSTALL_PREFIX="$(cygpath -m "$PWD/deps")"
+        cmake --build libqrencode/build
+        cmake --install libqrencode/build
+        make CC=gcc CPPFLAGS=-Ideps/include LDFLAGS="-static -s -Ldeps/lib"
+
+    - name: Check binary
+      shell: msys2 {0}
+      run: |
+        objdump -p qr.exe | grep "DLL Name"
+        if objdump -p qr.exe | grep -iE "DLL Name: (libqrencode|zlib|libz|libgcc|libwinpthread)"; then
+          echo "qr.exe depends on non-system DLLs" >&2
+          exit 1
+        fi
+        ./qr.exe -V
+        ./qr.exe Success
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: qr-windows-x86_64
+        path: qr.exe
+
+    - name: Upload to release
+      if: github.event_name == 'release'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release upload "${{ github.event.release.tag_name }}" qr.exe --clobber

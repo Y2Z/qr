@@ -10,7 +10,7 @@ all: $(PROG)
 .PHONY: all
 
 clean:
-	@rm -f $(PROG)
+	@rm -f $(PROG) $(PROG).exe
 	@rm -rf tests tests.dir tests.log
 .PHONY: clean
 

@@ -5,6 +5,19 @@ Print Unicode-friendly QR Codes® straight in your terminal!
 ![qr-screencast](https://user-images.githubusercontent.com/1392048/47276020-47b04800-d582-11e8-9da0-b09d0c949720.gif)
 
 
+## Download
+
+Every [release](https://github.com/Y2Z/qr/releases) comes with standalone
+binaries:
+
+ - `qr.exe` for Windows (x86_64)
+ - `qr-linux-x86_64.tar.gz` and `qr-linux-arm64.tar.gz` for Linux, each
+   containing a statically linked `qr` that runs on any distribution
+
+They have [libqrencode](https://github.com/fukuchi/libqrencode)
+(LGPL-2.1-or-later) and [zlib](https://zlib.net) built in.
+
+
 ## How to build
 
     $ make
@@ -18,6 +31,9 @@ Print Unicode-friendly QR Codes® straight in your terminal!
        $ apt-get install libqrencode-dev zlib1g-dev
    ###### Resolve on macOS
        $ brew install qrencode
+   ###### Resolve on Windows (in an [MSYS2](https://www.msys2.org) UCRT64 shell)
+       $ pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-qrencode mingw-w64-ucrt-x86_64-zlib
+       $ make CC=gcc
    ###### Build libqrencode from source
        $ git clone https://github.com/fukuchi/libqrencode.git && cd libqrencode
        $ ./configure --prefix=/usr/local
@@ -242,6 +258,6 @@ and other countries.
 
 ## License
 
-To the extent possible under law, the author(s) have dedicated all copyright
-related and neighboring rights to this software to the public domain worldwide.
+[Zero-Clause BSD](LICENSE) (0BSD): use, copy, modify and distribute this
+software for any purpose, with or without fee, no attribution required.
 This software is distributed without any warranty.
