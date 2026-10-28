@@ -906,8 +906,15 @@ done:
 static QRcode *qr_encode(const unsigned char *data, const size_t size,
                          const int version, const QRecLevel level,
                          const QRencodeMode mode, const bool mixed,
-                         const int mask)
+                         const int mask, const char **error)
 {
+    static const char *const unfit[] = {
+        "input can't be encoded in numeric mode (-m n)",
+        "input can't be encoded in alphanumeric mode (-m a)",
+        "input can't be encoded in 8-bit mode (-m 8)",
+        "input can't be encoded in Kanji mode (-m k)",
+    };
+    const char *reason = "input is too long for a QR code";
     Segment *segments = NULL;
     Segment single = { mode, 0, size };
     size_t count = 0, i;
@@ -917,6 +924,9 @@ static QRcode *qr_encode(const unsigned char *data, const size_t size,
     if (!mixed) {
         for (i = 0; i < size; i += mode == QR_MODE_KANJI ? 2 : 1) {
             if (!fits_mode(data, size, i, mode)) {
+                if (error != NULL) {
+                    *error = unfit[mode];
+                }
                 return NULL;
             }
         }
@@ -931,6 +941,7 @@ static QRcode *qr_encode(const unsigned char *data, const size_t size,
             free(segments);
             if ((segments = split(data, size, v, mode == QR_MODE_KANJI,
                                   &count)) == NULL && size > 0) {
+                reason = "out of memory";
                 break;
             }
             group = g;
@@ -946,11 +957,15 @@ static QRcode *qr_encode(const unsigned char *data, const size_t size,
         if (bits <= (size_t)data_codewords(v, level) * 8) {
             code = draw_symbol(data, mixed ? segments : &single,
                                mixed ? count : 1, v, level, mask);
+            reason = "out of memory";
             break;
         }
     }
 
     free(segments);
+    if (code == NULL && error != NULL) {
+        *error = reason;
+    }
     return code;
 }
 
@@ -997,7 +1012,7 @@ const char *help_msg =
     "  -b  border width  [1-4] (the default is 1)" EOL
     "  -i  invert colors" EOL
     "  -p  force colorless output" EOL
-    "  -u  ensure output has UTF-8 BOM" EOL
+    "  -u  add a UTF-8 BOM to the encoded data" EOL
     "  -a  animate data  [bbqr|bbqr-hex|bbqr-base32|bbqr-zlib|ur|numbered|txqr]" EOL
     "  -t  data type     [auto|psbt|tx|json|cbor|text|binary] (for -a)" EOL
     "  -f  frame rate    [1-30] (frames per second, the default is 4)" EOL
@@ -1251,15 +1266,19 @@ QRcode *encode_as(const char *str, const size_t size, const int version,
                   const QRecLevel level, const QRencodeMode mode)
 {
     return qr_encode((const unsigned char *)str, size, version, level, mode,
-                     false, -1);
+                     false, -1, NULL);
 }
 
-/* Encode the input as the best mix of modes, unless one is forced (-m) */
+/*
+ * Encode the input as the best mix of modes, unless one is forced (-m).
+ * On failure, *error tells why.
+ */
 QRcode *encode(const char *str, const size_t size, const int version,
-               const QRecLevel level, const QRencodeMode mode)
+               const QRecLevel level, const QRencodeMode mode,
+               const char **error)
 {
     return qr_encode((const unsigned char *)str, size, version, level, mode,
-                     mode == QR_MODE_8 || mode == QR_MODE_KANJI, -1);
+                     mode == QR_MODE_8 || mode == QR_MODE_KANJI, -1, error);
 }
 
 /*****************************************************************************/
@@ -3103,10 +3122,23 @@ int main(int argc, char *argv[])
     }
 
     /* Options for animated QR codes go together with -a only */
-    if (options.format == FORMAT_NONE
-        ? (type_set || fps_set || options.frames || options.raw)
-        : (options.encode_mode != QR_MODE_8 || options.unicode)) {
-        goto invalid_options;
+    if (options.format == FORMAT_NONE) {
+        const char *option = type_set ? "-t" : fps_set ? "-f"
+                           : options.frames ? "-n" : options.raw ? "-r" : NULL;
+
+        if (option != NULL) {
+            char message[32];
+
+            snprintf(message, sizeof(message), "%s works only with -a", option);
+            print_error(message);
+            ret = 1;
+            goto exit;
+        }
+    } else if (options.encode_mode != QR_MODE_8 || options.unicode) {
+        print_error(options.unicode ? "-u can't be used with -a"
+                                    : "-m can't be used with -a");
+        ret = 1;
+        goto exit;
     }
 
     /* Read input from STDIN only if no STRING was given */
@@ -3198,13 +3230,14 @@ int main(int argc, char *argv[])
         str_size += bom_size;
     }
 
+    const char *error = NULL;
     QRcode *qr = encode(str, str_size, options.version, options.ec_level,
-                        options.encode_mode);
+                        options.encode_mode, &error);
     free(str_bom);
 
     /* Bail out if unable to encode the data */
     if (qr == NULL) {
-        print_error("failed to generate QR code");
+        print_error(error);
         ret = 1;
         goto exit;
     }
