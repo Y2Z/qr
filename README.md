@@ -30,7 +30,7 @@ or
     -b  border width  [1-4] (the default is 1)
     -i  invert colors
     -p  force colorless output
-    -u  ensure output has UTF-8 BOM
+    -u  add a UTF-8 BOM to the encoded data
     -a  animate data  [bbqr|bbqr-hex|bbqr-base32|bbqr-zlib|ur|numbered|txqr]
     -t  data type     [auto|psbt|tx|json|cbor|text|binary] (for -a)
     -f  frame rate    [1-30] (frames per second, the default is 4)

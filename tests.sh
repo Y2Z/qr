@@ -252,7 +252,7 @@ Options:
   -b  border width  [1-4] (the default is 1)
   -i  invert colors
   -p  force colorless output
-  -u  ensure output has UTF-8 BOM
+  -u  add a UTF-8 BOM to the encoded data
   -a  animate data  [bbqr|bbqr-hex|bbqr-base32|bbqr-zlib|ur|numbered|txqr]
   -t  data type     [auto|psbt|tx|json|cbor|text|binary] (for -a)
   -f  frame rate    [1-30] (frames per second, the default is 4)
@@ -328,7 +328,7 @@ check 'prints version information when version flag is set' 0 "qr $VERSION
 qr -V
 EOF
 
-check 'fails if the input is too long' 1 '' 'Error: failed to generate QR code
+check 'fails if the input is too long' 1 '' 'Error: input is too long for a QR code
 ' <<'EOF'
 qr "$EXTRA_LONG_INPUT"
 EOF
@@ -428,15 +428,25 @@ check 'generates scannable BBQr QR Codes' <<'EOF'
 scan_text black white 9 "$(printf 'hello' | qr -a bbqr-hex)" | grep -q 'QR-Code:B\$HU010068656C6C6F'
 EOF
 
-check 'rejects options for animated QR Codes without -a' 0 'Error: invalid options
-Error: invalid options
-Error: invalid options
-Error: invalid options
+check 'rejects options that need -a, or that can'"'"'t go with it' 0 '1
+1
+1
+1
+1
+1
+' 'Error: -t works only with -a
+Error: -r works only with -a
+Error: -n works only with -a
+Error: -f works only with -a
+Error: -m can'"'"'t be used with -a
+Error: -u can'"'"'t be used with -a
 ' <<'EOF'
-qr -t psbt foo 2>&1 | head -n 1
-qr -r foo 2>&1 | head -n 1
-qr -n 2 foo 2>&1 | head -n 1
-qr -a bbqr -m n 1 2>&1 | head -n 1
+qr -t psbt foo; echo $?
+qr -r foo; echo $?
+qr -n 2 foo; echo $?
+qr -f 2 foo; echo $?
+qr -a bbqr -m n 1; echo $?
+qr -a bbqr -u -r hi; echo $?
 EOF
 
 check 'outputs the requested number of frames' 0 'B$HU010068656C6C6F
@@ -602,10 +612,10 @@ check 'fails to force a mode the data does not fit' 0 '1
 1
 1
 1
-' 'Error: failed to generate QR code
-Error: failed to generate QR code
-Error: failed to generate QR code
-Error: failed to generate QR code
+' 'Error: input can'"'"'t be encoded in numeric mode (-m n)
+Error: input can'"'"'t be encoded in numeric mode (-m n)
+Error: input can'"'"'t be encoded in alphanumeric mode (-m a)
+Error: input can'"'"'t be encoded in alphanumeric mode (-m a)
 ' <<'EOF'
 qr -m n 12a; echo $?
 qr -m n ' 123'; echo $?
@@ -631,6 +641,13 @@ for e in l m q h; do
 done
 printf '\000\000\000\377\377\377\000' > nul
 qr -p -l -b 4 < nul | scan 0 -Sbinary | cmp - nul
+EOF
+
+# The BOM goes into the QR Code, not the terminal output
+check 'adds a UTF-8 BOM to the encoded data' <<'EOF'
+qr -p -u Hello | LC_ALL=C grep -q "$(printf '\357\273\277')" && echo 'BOM in the output'
+qr -p -l -b 4 -u Hello | scan 0 -Sbinary > decoded
+printf '\357\273\277Hello' | cmp - decoded
 EOF
 
 # It is a minimum: data that does not fit gets a bigger symbol (version 3)
