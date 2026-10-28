@@ -1,4 +1,4 @@
-m4_define([AT_PACKAGE_BUGREPORT], [sunshine@uberspace.net])
+m4_define([AT_PACKAGE_BUGREPORT], [snshn@tutanota.com])
 m4_define([AT_PACKAGE_STRING], [qr])
 
 AT_INIT
@@ -322,10 +322,12 @@ AT_CHECK([printf '%0300d' 0 | ./../../qr -a numbered -v 5 -r | cut -c 1-5], [0],
 p2of3
 p3of3
 ])
-dnl Parts join back into the original text, without splitting characters
+dnl Parts join back into the original text, and none starts in the middle
+dnl of a character (with a UTF-8 continuation byte)
 AT_CHECK([printf 'Ünic0d3wörd 参 я %.0s' 1 2 3 4 5 6 7 8 9 10 > text
   ./../../qr -a numbered -v 2 -r < text > parts
-  sed 's/^p[[0-9]]*of[[0-9]]* //' parts | tr -d '\n' | cmp - text && iconv -f UTF-8 -t UTF-8 parts > /dev/null], [0], [], [])
+  sed 's/^p[[0-9]]*of[[0-9]]* //' parts | tr -d '\n' | cmp - text &&
+  ! LC_ALL=C grep -q "^p[[0-9]]*of[[0-9]]* $(printf '[[\200-\277]]')" parts], [0], [], [])
 dnl PSBTs are sent in base64, transactions in hex
 AT_CHECK([printf 'psbt\377\001\002' | ./../../qr -a numbered -r; printf '0200aBcD' | ./../../qr -a numbered -t tx -r], [0], [cHNidP8BAg==
 0200abcd

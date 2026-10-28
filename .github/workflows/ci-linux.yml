@@ -1,0 +1,49 @@
+name: Linux
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-22.04, ubuntu-24.04 ]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Resolve dependencies
+      run: |
+        sudo apt-get update && \
+        sudo apt-get install autoconf \
+          fonts-freefont-ttf \
+          imagemagick \
+          libqrencode-dev \
+          zbar-tools \
+          zlib1g-dev
+
+    - name: Build
+      run: make
+
+    - name: Test
+      run: make test < /dev/null
+
+    - name: Print test logs
+      if: ${{ failure() }}
+      run: cat tests.dir/*/*.log
+
+    - name: Install
+      run: sudo make PREFIX=/usr/local install
+
+    - name: Run
+      run: /usr/local/bin/qr Success
+
+    - name: Uninstall
+      run: sudo make PREFIX=/usr/local uninstall

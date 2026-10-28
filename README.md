@@ -1,5 +1,9 @@
 # qr
 
+[![Linux](https://github.com/Y2Z/qr/actions/workflows/ci-linux.yml/badge.svg?branch=master)](https://github.com/Y2Z/qr/actions/workflows/ci-linux.yml)
+[![macOS](https://github.com/Y2Z/qr/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/Y2Z/qr/actions/workflows/ci-macos.yml)
+[![Windows](https://github.com/Y2Z/qr/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/Y2Z/qr/actions/workflows/ci-windows.yml)
+
 Print Unicode-friendly QR Codes® straight in your terminal!
 
 ![qr-screencast](https://user-images.githubusercontent.com/1392048/47276020-47b04800-d582-11e8-9da0-b09d0c949720.gif)

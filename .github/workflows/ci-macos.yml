@@ -1,0 +1,55 @@
+name: macOS
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macos-14, macos-15 ]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Resolve dependencies
+      run: |
+        brew install autoconf \
+          imagemagick \
+          qrencode \
+          zbar
+        brew install --cask font-freefont
+        # ImageMagick can't look fonts up by name on macOS, so pass the file
+        FONT="$(find ~/Library/Fonts /Library/Fonts -iname 'FreeMono.*' 2>/dev/null | head -n 1)"
+        test -n "$FONT"
+        echo "FONT=$FONT" >> "$GITHUB_ENV"
+        # Absorb one-time font cache warnings before the tests check stderr
+        magick -font "$FONT" label:warmup png:- > /dev/null
+        echo "CPPFLAGS=-I$(brew --prefix)/include" >> "$GITHUB_ENV"
+        echo "LDFLAGS=-L$(brew --prefix)/lib" >> "$GITHUB_ENV"
+
+    - name: Build
+      run: make CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
+
+    - name: Test
+      run: make test FONT="$FONT" < /dev/null
+
+    - name: Print test logs
+      if: ${{ failure() }}
+      run: cat tests.dir/*/*.log
+
+    - name: Install
+      run: sudo make PREFIX=/usr/local install
+
+    - name: Run
+      run: /usr/local/bin/qr Success
+
+    - name: Uninstall
+      run: sudo make PREFIX=/usr/local uninstall

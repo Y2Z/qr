@@ -1,0 +1,54 @@
+name: Windows
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Resolve dependencies
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          autoconf
+          curl
+          diffutils
+          make
+          unzip
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-imagemagick
+          mingw-w64-ucrt-x86_64-qrencode
+          mingw-w64-ucrt-x86_64-zbar
+          mingw-w64-ucrt-x86_64-zlib
+
+    - name: Resolve test font
+      run: |
+        curl -sSfLo freefont.zip https://ftp.gnu.org/gnu/freefont/freefont-ttf-20120503.zip
+        unzip -j freefont.zip '*/FreeMono.ttf'
+
+    - name: Build
+      run: make CC=gcc
+
+    - name: Test
+      run: make test CC=gcc FONT="$(cygpath -m "$PWD/FreeMono.ttf")" < /dev/null
+
+    - name: Print test logs
+      if: ${{ failure() }}
+      run: cat tests.dir/*/*.log
+
+    - name: Run
+      run: ./qr.exe Success

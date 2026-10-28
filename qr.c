@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <windows.h>
+#include <shellapi.h>
 #endif
 
 /* Initial size of the buffer used for reading STDIN */
@@ -1770,6 +1771,41 @@ static bool setup_terminal(void)
 #endif
 }
 
+#ifdef _WIN32
+/*
+ * The C runtime converts arguments to the ANSI code page, which turns every
+ * character missing from it into "?": take them from the UTF-16 command line
+ * instead, converted to UTF-8.
+ */
+static char **utf8_arguments(int *argc)
+{
+    LPWSTR *wide = CommandLineToArgvW(GetCommandLineW(), argc);
+    char **argv = NULL;
+    int i, size;
+
+    if (wide == NULL ||
+        (argv = calloc((size_t)*argc + 1, sizeof(char *))) == NULL) {
+        goto done;
+    }
+    for (i = 0; i < *argc; i++) {
+        size = WideCharToMultiByte(CP_UTF8, 0, wide[i], -1, NULL, 0, NULL, NULL);
+        if (size <= 0 || (argv[i] = malloc((size_t)size)) == NULL) {
+            while (i-- > 0) {
+                free(argv[i]);
+            }
+            free(argv);
+            argv = NULL;
+            goto done;
+        }
+        WideCharToMultiByte(CP_UTF8, 0, wide[i], -1, argv[i], size, NULL, NULL);
+    }
+
+done:
+    LocalFree(wide);
+    return argv;
+}
+#endif
+
 static volatile sig_atomic_t stop_playback = 0;
 
 static void on_signal(int signum)
@@ -1916,6 +1952,13 @@ int main(int argc, char *argv[])
     char *stdin_buf = NULL;  /* Owns the input when it comes from STDIN */
     int c = 0;
     const bool terminal = setup_terminal();
+
+#ifdef _WIN32
+    if ((argv = utf8_arguments(&argc)) == NULL) {
+        print_error("unable to read arguments");
+        return 1;
+    }
+#endif
 
     /* Default options */
     Options options = {
