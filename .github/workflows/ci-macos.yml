@@ -21,8 +21,7 @@ jobs:
 
     - name: Resolve dependencies
       run: |
-        brew install autoconf \
-          imagemagick \
+        brew install imagemagick \
           zbar
         brew install --cask font-freefont
         # ImageMagick can't look fonts up by name on macOS, so pass the file
@@ -39,10 +38,6 @@ jobs:
 
     - name: Test
       run: make test FONT="$FONT" < /dev/null
-
-    - name: Print test logs
-      if: ${{ failure() }}
-      run: cat tests.dir/*/*.log
 
     - name: Install
       run: sudo make PREFIX=/usr/local install

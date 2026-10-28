@@ -242,15 +242,14 @@ or
 
     $ make test
 
+The tests are a plain shell script, so they can also be run one by one,
+e.g. `sh tests.sh 10 36` runs tests 10 and 36.  A failed test leaves what
+it did in `tests.tmp/<number>`.
+
 <details>
     <summary><strong>Test dependencies</strong></summary>
     <br />
 
- - [autoconf](https://www.gnu.org/software/autoconf/autoconf.html)
-   ###### Resolve on Ubuntu or Debian
-       $ apt-get install autoconf
-   ###### Resolve on macOS
-       $ brew install autoconf
  - [zbar](http://zbar.sourceforge.net)
    ###### Resolve on Ubuntu or Debian
        $ apt-get install zbar-tools
@@ -267,6 +266,18 @@ or
    ###### Resolve on macOS
        $ brew tap homebrew/cask-fonts
        $ brew install --cask font-freefont
+ - [Python 3](https://www.python.org)
+   ###### Resolve on Ubuntu or Debian
+       $ apt-get install python3
+   ###### Resolve on macOS
+       Nothing to do: it comes with the Xcode Command Line Tools
+
+On Windows, in an [MSYS2](https://www.msys2.org) UCRT64 shell:
+
+    $ pacman -S diffutils mingw-w64-ucrt-x86_64-imagemagick mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-zbar
+    $ make test CC=gcc FONT="$(cygpath -m "$PWD/FreeMono.ttf")"
+
+with `FreeMono.ttf` taken from [GNU FreeFont](https://ftp.gnu.org/gnu/freefont/).
 
 </details>
 

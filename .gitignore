@@ -1,9 +1,5 @@
 .DS_Store
-/tests~
 
 /qr
 /qr.exe
-
-/tests
-/tests.dir
-/tests.log
+/tests.tmp
