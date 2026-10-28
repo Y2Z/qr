@@ -6,9 +6,9 @@
  *
  */
 
-#include <qrencode.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +47,827 @@ static const char *const glyphs[16] = {
 
 /* Newline character(s) */
 #define EOL "\n"
+
+/*****************************************************************************/
+/* QR Code encoder (ISO/IEC 18004)                                           */
+/*****************************************************************************/
+
+#define QRSPEC_VERSION_MAX 40
+
+/* Ways of encoding data */
+typedef enum {
+    QR_MODE_NUL = -1,
+    QR_MODE_NUM,    /* Digits, 3 per 10 bits */
+    QR_MODE_AN,     /* Digits, A-Z and " $%*+-./:", 2 per 11 bits */
+    QR_MODE_8,      /* Any byte, 8 bits each */
+    QR_MODE_KANJI,  /* Shift JIS double-byte characters, 13 bits each */
+} QRencodeMode;
+
+/* Error correction levels: about 7%, 15%, 25% and 30% can be restored */
+typedef enum {
+    QR_ECLEVEL_L,
+    QR_ECLEVEL_M,
+    QR_ECLEVEL_Q,
+    QR_ECLEVEL_H,
+} QRecLevel;
+
+/* A QR code symbol: width x width modules, 1 for dark ones */
+typedef struct {
+    int version;
+    int width;
+    unsigned char *data;
+} QRcode;
+
+/* A run of the input encoded in a single mode */
+typedef struct {
+    QRencodeMode mode;
+    size_t start;
+    size_t length;  /* In bytes */
+} Segment;
+
+/* Error correction codewords per block, by level and version */
+static const unsigned char ecc_per_block[4][41] = {
+    { 0,  7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28,
+      30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      30, 30, 30, 30, 30 },
+    { 0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28,
+      26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
+      28, 28, 28, 28, 28 },
+    { 0, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28,
+      28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      30, 30, 30, 30, 30 },
+    { 0, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28,
+      28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      30, 30, 30, 30, 30 },
+};
+
+/* Error correction blocks, by level and version */
+static const unsigned char ecc_blocks[4][41] = {
+    { 0,  1,  1,  1,  1,  1,  2,  2,  2,  2,  4,  4,  4,  4,  4,  6,  6,  6,
+       6,  7,  8,  8,  9,  9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19,
+      20, 21, 22, 24, 25 },
+    { 0,  1,  1,  1,  2,  2,  4,  4,  4,  5,  5,  5,  8,  9,  9, 10, 10, 11,
+      13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38,
+      40, 43, 45, 47, 49 },
+    { 0,  1,  1,  2,  2,  4,  4,  6,  6,  8,  8,  8, 10, 12, 16, 12, 17, 16,
+      18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53,
+      56, 59, 62, 65, 68 },
+    { 0,  1,  1,  2,  4,  4,  4,  5,  6,  8,  8, 11, 11, 16, 16, 18, 16, 19,
+      21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63,
+      66, 70, 74, 77, 81 },
+};
+
+/* Modules left for data and error correction once patterns are drawn */
+static int raw_modules(const int version)
+{
+    int count = (16 * version + 128) * version + 64;
+
+    if (version >= 2) {
+        const int aligns = version / 7 + 2;
+        count -= (25 * aligns - 10) * aligns - 55;
+        if (version >= 7) {
+            count -= 36;  /* Version information */
+        }
+    }
+    return count;
+}
+
+static int data_codewords(const int version, const QRecLevel level)
+{
+    return raw_modules(version) / 8 -
+           ecc_per_block[level][version] * ecc_blocks[level][version];
+}
+
+/* Length of the character count, which grows with the version */
+static int count_bits(const QRencodeMode mode, const int version)
+{
+    static const unsigned char bits[4][3] = {
+        { 10, 12, 14 }, { 9, 11, 13 }, { 8, 16, 16 }, { 8, 10, 12 },
+    };
+
+    return bits[mode][version <= 9 ? 0 : version <= 26 ? 1 : 2];
+}
+
+/* Value of an alphanumeric character, or -1 */
+static int an_value(const unsigned char c)
+{
+    static const char table[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+    const char *p = memchr(table, c, sizeof(table) - 1);
+
+    return p != NULL ? (int)(p - table) : -1;
+}
+
+/* Whether a Shift JIS double-byte character that Kanji mode holds is at i */
+static bool is_kanji(const unsigned char *data, const size_t size,
+                     const size_t i)
+{
+    unsigned int code;
+
+    if (i + 1 >= size) {
+        return false;
+    }
+    code = (unsigned int)data[i] << 8 | data[i + 1];
+    return ((code >= 0x8140 && code <= 0x9FFC) ||
+            (code >= 0xE040 && code <= 0xEBBF)) &&
+           data[i + 1] >= 0x40 && data[i + 1] != 0x7F && data[i + 1] <= 0xFC;
+}
+
+/* Whether the byte at i (and the next one, for Kanji) fits the mode */
+static bool fits_mode(const unsigned char *data, const size_t size,
+                      const size_t i, const QRencodeMode mode)
+{
+    switch (mode) {
+        case QR_MODE_NUM:   return data[i] >= '0' && data[i] <= '9';
+        case QR_MODE_AN:    return an_value(data[i]) >= 0;
+        case QR_MODE_8:     return true;
+        case QR_MODE_KANJI: return is_kanji(data, size, i);
+        default:            return false;
+    }
+}
+
+/* Bits taken by a segment in the given version, or 0 if it can't be done */
+static size_t segment_bits(const Segment *seg, const int version)
+{
+    const size_t n = seg->length;
+    const size_t chars = seg->mode == QR_MODE_KANJI ? n / 2 : n;
+    size_t bits;
+
+    if (chars >= (size_t)1 << count_bits(seg->mode, version)) {
+        return 0;
+    }
+    switch (seg->mode) {
+        case QR_MODE_NUM:
+            bits = 10 * (n / 3) + (n % 3 == 2 ? 7 : n % 3 == 1 ? 4 : 0);
+            break;
+        case QR_MODE_AN:
+            bits = 11 * (n / 2) + 6 * (n % 2);
+            break;
+        case QR_MODE_8:
+            bits = 8 * n;
+            break;
+        default:
+            bits = 13 * chars;
+            break;
+    }
+    return 4 + (size_t)count_bits(seg->mode, version) + bits;
+}
+
+/*
+ * Split the data into the segments that take the fewest bits in versions
+ * like the given one, by dynamic programming: cost[i][m] is the least cost of
+ * encoding the first i bytes with a segment of mode m open at the end.  Costs
+ * are in sixths of bits, as the cost of a character in numeric (10/3 bits)
+ * and alphanumeric (11/2) modes is fractional; closed segments round up to
+ * whole bits, which is exact for all modes.
+ */
+static Segment *split(const unsigned char *data, const size_t size,
+                      const int version, const bool kanji, size_t *count)
+{
+    static const unsigned long char_cost[4] = { 20, 33, 48, 78 };
+    const int modes = kanji ? 4 : 3;
+    const unsigned long none = (unsigned long)-1;
+    unsigned long *cost = malloc((size + 1) * 4 * sizeof(unsigned long));
+    signed char *from = malloc((size + 1) * 4);  /* Previous mode, or -1 */
+    Segment *segments = NULL;
+    unsigned long best = none;
+    size_t i, n, pos;
+    int m, k, mode = 0;
+
+    *count = 0;
+    if (cost == NULL || from == NULL) {
+        goto done;
+    }
+    for (i = 0; i < (size + 1) * 4; i++) {
+        cost[i] = none;
+    }
+
+    for (i = 0; i < size; i++) {
+        /* Cheapest way to end every segment before byte i */
+        unsigned long closed = i == 0 ? 0 : none;
+        int closed_mode = -1;
+
+        for (k = 0; k < modes && i > 0; k++) {
+            if (cost[i * 4 + k] != none &&
+                (cost[i * 4 + k] + 5) / 6 * 6 < closed) {
+                closed = (cost[i * 4 + k] + 5) / 6 * 6;
+                closed_mode = k;
+            }
+        }
+
+        for (m = 0; m < modes; m++) {
+            const size_t next = i + (m == QR_MODE_KANJI ? 2 : 1);
+            const unsigned long head = (unsigned long)
+                (4 + count_bits((QRencodeMode)m, version)) * 6;
+            unsigned long c;
+
+            if (!fits_mode(data, size, i, (QRencodeMode)m)) {
+                continue;
+            }
+            /* Carry on with the segment in progress... */
+            if (cost[i * 4 + m] != none) {
+                c = cost[i * 4 + m] + char_cost[m];
+                if (c < cost[next * 4 + m]) {
+                    cost[next * 4 + m] = c;
+                    from[next * 4 + m] = (signed char)m;
+                }
+            }
+            /* ...or start a new one */
+            if (closed != none) {
+                c = closed + head + char_cost[m];
+                if (c < cost[next * 4 + m]) {
+                    cost[next * 4 + m] = c;
+                    from[next * 4 + m] = (signed char)(closed_mode < 0
+                                                      ? -1 : closed_mode + 4);
+                }
+            }
+        }
+    }
+
+    for (m = 0; m < modes; m++) {
+        if (cost[size * 4 + m] != none &&
+            (cost[size * 4 + m] + 5) / 6 * 6 < best) {
+            best = (cost[size * 4 + m] + 5) / 6 * 6;
+            mode = m;
+        }
+    }
+    if (best == none) {
+        goto done;
+    }
+
+    /* Walk back through the choices: from[] holds m to carry on a segment
+       of mode m, k + 4 to start one after a segment of mode k, and -1 to
+       start the first one; segments come out last first */
+    if ((segments = calloc(size, sizeof(Segment))) == NULL) {
+        goto done;
+    }
+    for (pos = size, n = 0; pos > 0; n++) {
+        const size_t end = pos;
+        int f;
+
+        do {
+            f = from[pos * 4 + mode];
+            pos -= mode == QR_MODE_KANJI ? 2 : 1;
+        } while (f == mode);
+        segments[n].mode = (QRencodeMode)mode;
+        segments[n].start = pos;
+        segments[n].length = end - pos;
+        mode = f - 4;
+    }
+    for (i = 0; i < n / 2; i++) {
+        const Segment tmp = segments[i];
+        segments[i] = segments[n - 1 - i];
+        segments[n - 1 - i] = tmp;
+    }
+    *count = n;
+
+done:
+    free(cost);
+    free(from);
+    return segments;
+}
+
+/* Append the lowest `n` bits of value to a bit stream */
+static void put_bits(unsigned char *stream, size_t *pos,
+                     const unsigned long value, int n)
+{
+    while (n-- > 0) {
+        if ((value >> n) & 1) {
+            stream[*pos >> 3] |= (unsigned char)(0x80 >> (*pos & 7));
+        }
+        (*pos)++;
+    }
+}
+
+static void put_segment(unsigned char *stream, size_t *pos,
+                        const Segment *seg, const unsigned char *data,
+                        const int version)
+{
+    static const unsigned char indicator[4] = { 1, 2, 4, 8 };
+    const unsigned char *p = data + seg->start;
+    const size_t n = seg->length;
+    size_t i;
+
+    put_bits(stream, pos, indicator[seg->mode], 4);
+    put_bits(stream, pos, seg->mode == QR_MODE_KANJI ? n / 2 : n,
+             count_bits(seg->mode, version));
+
+    switch (seg->mode) {
+        case QR_MODE_NUM:
+            for (i = 0; i < n; i += 3) {
+                const size_t digits = n - i < 3 ? n - i : 3;
+                unsigned long value = 0;
+                size_t j;
+                for (j = 0; j < digits; j++) {
+                    value = value * 10 + (unsigned long)(p[i + j] - '0');
+                }
+                put_bits(stream, pos, value, (int)(digits * 3 + 1));
+            }
+            break;
+        case QR_MODE_AN:
+            for (i = 0; i + 1 < n; i += 2) {
+                put_bits(stream, pos, (unsigned long)(an_value(p[i]) * 45 +
+                                                      an_value(p[i + 1])), 11);
+            }
+            if (n % 2) {
+                put_bits(stream, pos, (unsigned long)an_value(p[n - 1]), 6);
+            }
+            break;
+        case QR_MODE_8:
+            for (i = 0; i < n; i++) {
+                put_bits(stream, pos, p[i], 8);
+            }
+            break;
+        default:
+            for (i = 0; i < n; i += 2) {
+                unsigned int code = (unsigned int)p[i] << 8 | p[i + 1];
+                code -= code <= 0x9FFC ? 0x8140 : 0xC140;
+                put_bits(stream, pos, (code >> 8) * 0xC0 + (code & 0xFF), 13);
+            }
+            break;
+    }
+}
+
+/* Multiplication in GF(2^8) modulo x^8 + x^4 + x^3 + x^2 + 1 */
+static unsigned char gf_mul(unsigned char x, unsigned char y)
+{
+    unsigned char z = 0;
+    int i;
+
+    for (i = 7; i >= 0; i--) {
+        z = (unsigned char)((z << 1) ^ ((z >> 7) * 0x11D));
+        z ^= (unsigned char)(((y >> i) & 1) * x);
+    }
+    return z;
+}
+
+/* Reed-Solomon error correction codewords of a block */
+static void reed_solomon(const unsigned char *data, const int size,
+                         const int degree, unsigned char *ecc)
+{
+    unsigned char generator[30];
+    unsigned char root = 1;
+    int i, j;
+
+    /* Product of (x - 2^i) for i < degree, leading term omitted */
+    memset(generator, 0, sizeof(generator));
+    generator[degree - 1] = 1;
+    for (i = 0; i < degree; i++) {
+        for (j = 0; j < degree; j++) {
+            generator[j] = gf_mul(generator[j], root);
+            if (j + 1 < degree) {
+                generator[j] ^= generator[j + 1];
+            }
+        }
+        root = gf_mul(root, 0x02);
+    }
+
+    /* Remainder of the division by the generator */
+    memset(ecc, 0, (size_t)degree);
+    for (i = 0; i < size; i++) {
+        const unsigned char factor = data[i] ^ ecc[0];
+        memmove(ecc, ecc + 1, (size_t)degree - 1);
+        ecc[degree - 1] = 0;
+        for (j = 0; j < degree; j++) {
+            ecc[j] ^= gf_mul(generator[j], factor);
+        }
+    }
+}
+
+/*
+ * Split data codewords into blocks, add their error correction codewords and
+ * interleave them all: first byte of every block, second byte, and so on.
+ */
+static void interleave(const unsigned char *data, const int version,
+                       const QRecLevel level, unsigned char *out)
+{
+    const int blocks = ecc_blocks[level][version];
+    const int ecc_len = ecc_per_block[level][version];
+    const int raw = raw_modules(version) / 8;
+    const int short_blocks = blocks - raw % blocks;
+    const int short_data = raw / blocks - ecc_len;
+    const int data_len = data_codewords(version, level);
+    unsigned char ecc[30];
+    int b, j, k;
+
+    for (b = 0; b < blocks; b++) {
+        const int len = short_data + (b < short_blocks ? 0 : 1);
+
+        reed_solomon(data, len, ecc_len, ecc);
+        for (j = 0, k = b; j < len; j++, k += blocks) {
+            if (j == short_data) {
+                k -= short_blocks;  /* Only long blocks have this byte */
+            }
+            out[k] = data[j];
+        }
+        for (j = 0, k = data_len + b; j < ecc_len; j++, k += blocks) {
+            out[k] = ecc[j];
+        }
+        data += len;
+    }
+    memset(ecc, 0, sizeof(ecc));
+}
+
+/* Symbol being drawn: modules, plus which ones belong to patterns */
+typedef struct {
+    int size;
+    unsigned char *modules;
+    unsigned char *function;
+} Matrix;
+
+static void set_function(Matrix *m, const int x, const int y, const bool dark)
+{
+    m->modules[y * m->size + x] = dark;
+    m->function[y * m->size + x] = 1;
+}
+
+/* Centers of alignment patterns along either axis */
+static int alignment_positions(const int version, int positions[7])
+{
+    const int count = version / 7 + 2;
+    const int step = (version * 8 + count * 3 + 5) / (count * 4 - 4) * 2;
+    int i, pos;
+
+    if (version == 1) {
+        return 0;
+    }
+    positions[0] = 6;
+    for (i = count - 1, pos = version * 4 + 10; i >= 1; i--, pos -= step) {
+        positions[i] = pos;
+    }
+    return count;
+}
+
+/* Format information: error correction level and mask, with BCH code */
+static void draw_format(Matrix *m, const QRecLevel level, const int mask)
+{
+    static const int level_bits[4] = { 1, 0, 3, 2 };
+    const int data = level_bits[level] << 3 | mask;
+    int rem = data, bits, i;
+
+    for (i = 0; i < 10; i++) {
+        rem = (rem << 1) ^ ((rem >> 9) * 0x537);
+    }
+    bits = (data << 10 | rem) ^ 0x5412;
+
+    for (i = 0; i <= 5; i++) {
+        set_function(m, 8, i, (bits >> i) & 1);
+    }
+    set_function(m, 8, 7, (bits >> 6) & 1);
+    set_function(m, 8, 8, (bits >> 7) & 1);
+    set_function(m, 7, 8, (bits >> 8) & 1);
+    for (i = 9; i < 15; i++) {
+        set_function(m, 14 - i, 8, (bits >> i) & 1);
+    }
+    for (i = 0; i < 8; i++) {
+        set_function(m, m->size - 1 - i, 8, (bits >> i) & 1);
+    }
+    for (i = 8; i < 15; i++) {
+        set_function(m, 8, m->size - 15 + i, (bits >> i) & 1);
+    }
+    set_function(m, 8, m->size - 8, true);  /* Always dark */
+}
+
+static void draw_patterns(Matrix *m, const int version)
+{
+    const int size = m->size;
+    int positions[7];
+    const int aligns = alignment_positions(version, positions);
+    int i, j, dx, dy;
+
+    /* Timing patterns */
+    for (i = 0; i < size; i++) {
+        set_function(m, 6, i, i % 2 == 0);
+        set_function(m, i, 6, i % 2 == 0);
+    }
+
+    /* Finder patterns, with their separators */
+    for (i = 0; i < 3; i++) {
+        const int cx = i == 1 ? size - 4 : 3;
+        const int cy = i == 2 ? size - 4 : 3;
+        for (dy = -4; dy <= 4; dy++) {
+            for (dx = -4; dx <= 4; dx++) {
+                const int dist = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+                const int x = cx + dx, y = cy + dy;
+                if (x >= 0 && x < size && y >= 0 && y < size) {
+                    set_function(m, x, y, dist != 2 && dist != 4);
+                }
+            }
+        }
+    }
+
+    /* Alignment patterns, except where finder patterns are */
+    for (i = 0; i < aligns; i++) {
+        for (j = 0; j < aligns; j++) {
+            if ((i == 0 && j == 0) || (i == 0 && j == aligns - 1) ||
+                (i == aligns - 1 && j == 0)) {
+                continue;
+            }
+            for (dy = -2; dy <= 2; dy++) {
+                for (dx = -2; dx <= 2; dx++) {
+                    const int dist = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+                    set_function(m, positions[i] + dx, positions[j] + dy,
+                                 dist != 1);
+                }
+            }
+        }
+    }
+
+    /* Reserve the format information area */
+    draw_format(m, QR_ECLEVEL_L, 0);
+
+    /* Version information, with BCH code */
+    if (version >= 7) {
+        int rem = version, bits;
+        for (i = 0; i < 12; i++) {
+            rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
+        }
+        bits = version << 12 | rem;
+        for (i = 0; i < 18; i++) {
+            const bool dark = (bits >> i) & 1;
+            const int a = size - 11 + i % 3, b = i / 3;
+            set_function(m, a, b, dark);
+            set_function(m, b, a, dark);
+        }
+    }
+}
+
+/* Place codewords in two-module-wide columns, zigzagging up and down */
+static void draw_codewords(Matrix *m, const unsigned char *codewords,
+                           const int count)
+{
+    const int size = m->size;
+    long i = 0;
+    int right, vert, j;
+
+    for (right = size - 1; right >= 1; right -= 2) {
+        if (right == 6) {
+            right = 5;  /* Skip the vertical timing pattern */
+        }
+        for (vert = 0; vert < size; vert++) {
+            for (j = 0; j < 2; j++) {
+                const int x = right - j;
+                const bool upward = ((right + 1) & 2) == 0;
+                const int y = upward ? size - 1 - vert : vert;
+                if (!m->function[y * size + x] && i < (long)count * 8) {
+                    m->modules[y * size + x] =
+                        (codewords[i >> 3] >> (7 - (i & 7))) & 1;
+                    i++;
+                }
+                /* Remainder bits stay light */
+            }
+        }
+    }
+}
+
+/* Flip data modules where the mask pattern says so (twice undoes it) */
+static void apply_mask(Matrix *m, const int mask)
+{
+    int x, y;
+
+    for (y = 0; y < m->size; y++) {
+        for (x = 0; x < m->size; x++) {
+            bool flip;
+            switch (mask) {
+                case 0:  flip = (x + y) % 2 == 0;                     break;
+                case 1:  flip = y % 2 == 0;                           break;
+                case 2:  flip = x % 3 == 0;                           break;
+                case 3:  flip = (x + y) % 3 == 0;                     break;
+                case 4:  flip = (x / 3 + y / 2) % 2 == 0;             break;
+                case 5:  flip = x * y % 2 + x * y % 3 == 0;           break;
+                case 6:  flip = (x * y % 2 + x * y % 3) % 2 == 0;     break;
+                default: flip = ((x + y) % 2 + x * y % 3) % 2 == 0;  break;
+            }
+            if (flip && !m->function[y * m->size + x]) {
+                m->modules[y * m->size + x] ^= 1;
+            }
+        }
+    }
+}
+
+/* Remember the length of a finished run, newest first */
+static void add_run(int history[7], int length, const int size)
+{
+    if (history[0] == 0) {
+        length += size;  /* The light border before the first run */
+    }
+    memmove(history + 1, history, 6 * sizeof(int));
+    history[0] = length;
+}
+
+/* Count finder-like patterns (1:1:3:1:1 with light space) ending the runs */
+static int finder_like(const int history[7])
+{
+    const int n = history[1];
+    const bool core = n > 0 && history[2] == n && history[3] == n * 3 &&
+                      history[4] == n && history[5] == n;
+
+    return (core && history[0] >= n * 4 && history[6] >= n) +
+           (core && history[6] >= n * 4 && history[0] >= n);
+}
+
+static int finder_like_at_end(const bool dark, int length, int history[7],
+                              const int size)
+{
+    if (dark) {
+        add_run(history, length, size);
+        length = 0;
+    }
+    add_run(history, length + size, size);  /* The light border after */
+    return finder_like(history);
+}
+
+/* How hard the symbol is to scan, by the four rules of the standard */
+static long penalty(const Matrix *m)
+{
+    const int size = m->size;
+    long score = 0;
+    long dark = 0, total = (long)size * size;
+    int pass, i, j;
+
+    /* Runs of 5 or more modules of the same color, and finder-like patterns,
+       in rows (pass 0) and columns (pass 1) */
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < size; i++) {
+            int history[7] = { 0 };
+            bool color = false;
+            int run = 0;
+            for (j = 0; j < size; j++) {
+                const bool c = pass == 0 ? m->modules[i * size + j]
+                                         : m->modules[j * size + i];
+                if (c == color) {
+                    run++;
+                    if (run == 5) {
+                        score += 3;
+                    } else if (run > 5) {
+                        score++;
+                    }
+                } else {
+                    add_run(history, run, size);
+                    if (!color) {
+                        score += finder_like(history) * 40;
+                    }
+                    color = c;
+                    run = 1;
+                }
+            }
+            score += finder_like_at_end(color, run, history, size) * 40;
+        }
+    }
+
+    /* 2x2 blocks of the same color */
+    for (i = 0; i < size - 1; i++) {
+        for (j = 0; j < size - 1; j++) {
+            const unsigned char c = m->modules[i * size + j];
+            if (c == m->modules[i * size + j + 1] &&
+                c == m->modules[(i + 1) * size + j] &&
+                c == m->modules[(i + 1) * size + j + 1]) {
+                score += 3;
+            }
+        }
+    }
+
+    /* Proportion of dark modules, away from 50% in steps of 5% */
+    for (i = 0; i < size * size; i++) {
+        dark += m->modules[i];
+    }
+    score += ((labs(dark * 20 - total * 10) + total - 1) / total - 1) * 10;
+
+    return score;
+}
+
+/* Draw the symbol for the given segments; mask -1 picks the best one */
+static QRcode *draw_symbol(const unsigned char *data, const Segment *segments,
+                           const size_t count, const int version,
+                           const QRecLevel level, int mask)
+{
+    const int capacity = data_codewords(version, level);
+    const int raw = raw_modules(version) / 8;
+    unsigned char *stream = calloc((size_t)capacity, 1);
+    unsigned char *codewords = calloc((size_t)raw, 1);
+    QRcode *code = calloc(1, sizeof(QRcode));
+    Matrix m = { 17 + 4 * version, NULL, NULL };
+    size_t pos = 0, i;
+    long best = -1;
+
+    m.modules = calloc((size_t)m.size * (size_t)m.size, 1);
+    m.function = calloc((size_t)m.size * (size_t)m.size, 1);
+    if (stream == NULL || codewords == NULL || code == NULL ||
+        m.modules == NULL || m.function == NULL) {
+        free(m.modules);
+        free(code);
+        code = NULL;
+        goto done;
+    }
+
+    /* Data bits, terminator, padding to a byte, then pad codewords */
+    for (i = 0; i < count; i++) {
+        put_segment(stream, &pos, &segments[i], data, version);
+    }
+    pos += (size_t)capacity * 8 - pos < 4 ? (size_t)capacity * 8 - pos : 4;
+    pos = (pos + 7) / 8;
+    for (i = 0; pos < (size_t)capacity; pos++, i++) {
+        stream[pos] = i % 2 ? 0x11 : 0xEC;
+    }
+
+    interleave(stream, version, level, codewords);
+    draw_patterns(&m, version);
+    draw_codewords(&m, codewords, raw);
+
+    if (mask < 0) {
+        for (i = 0; i < 8; i++) {
+            long score;
+            apply_mask(&m, (int)i);
+            draw_format(&m, level, (int)i);
+            score = penalty(&m);
+            if (best < 0 || score < best) {
+                best = score;
+                mask = (int)i;
+            }
+            apply_mask(&m, (int)i);
+        }
+    }
+    apply_mask(&m, mask);
+    draw_format(&m, level, mask);
+
+    code->version = version;
+    code->width = m.size;
+    code->data = m.modules;
+
+done:
+    free(stream);
+    free(codewords);
+    free(m.function);
+    return code;
+}
+
+/*
+ * Encode data in the smallest version that's at least `version` (0 for any)
+ * and holds it: as the best mix of numeric, alphanumeric and 8-bit segments
+ * (and Kanji ones, if `mode` is QR_MODE_KANJI) when `mixed`, otherwise as a
+ * single segment of the given mode.  `mask` is the mask pattern to use, -1
+ * to pick the best one.  Returns NULL if the data doesn't fit, or can't be
+ * encoded in that mode.
+ */
+static QRcode *qr_encode(const unsigned char *data, const size_t size,
+                         const int version, const QRecLevel level,
+                         const QRencodeMode mode, const bool mixed,
+                         const int mask)
+{
+    Segment *segments = NULL;
+    Segment single = { mode, 0, size };
+    size_t count = 0, i;
+    int v, group = -1;
+    QRcode *code = NULL;
+
+    if (!mixed) {
+        for (i = 0; i < size; i += mode == QR_MODE_KANJI ? 2 : 1) {
+            if (!fits_mode(data, size, i, mode)) {
+                return NULL;
+            }
+        }
+    }
+
+    for (v = version > 0 ? version : 1; v <= QRSPEC_VERSION_MAX; v++) {
+        const int g = v <= 9 ? 0 : v <= 26 ? 1 : 2;
+        size_t bits = 0;
+
+        /* The best split depends on the character count lengths */
+        if (mixed && g != group) {
+            free(segments);
+            if ((segments = split(data, size, v, mode == QR_MODE_KANJI,
+                                  &count)) == NULL && size > 0) {
+                break;
+            }
+            group = g;
+        }
+        for (i = 0; i < (mixed ? count : 1); i++) {
+            const size_t b = segment_bits(mixed ? &segments[i] : &single, v);
+            if (b == 0) {
+                bits = (size_t)-1;
+                break;
+            }
+            bits += b;
+        }
+        if (bits <= (size_t)data_codewords(v, level) * 8) {
+            code = draw_symbol(data, mixed ? segments : &single,
+                               mixed ? count : 1, v, level, mask);
+            break;
+        }
+    }
+
+    free(segments);
+    return code;
+}
+
+/* Wipe the modules (they are the data, after all) before freeing */
+static void qrcode_free(QRcode *code)
+{
+    if (code != NULL) {
+        memset(code->data, 0, (size_t)code->width * (size_t)code->width);
+        free(code->data);
+        free(code);
+    }
+}
 
 typedef struct {
     QRencodeMode encode_mode;
@@ -306,45 +1127,20 @@ int get_qr_ec_level(const char *ec_level)
     }
 }
 
-/* Encode the whole input using the given mode */
+/* Encode the whole input as a single segment of the given mode */
 QRcode *encode_as(const char *str, const size_t size, const int version,
                   const QRecLevel level, const QRencodeMode mode)
 {
-    QRinput *input;
-    QRcode *code = NULL;
-
-    if ((input = QRinput_new2(version, level)) == NULL) {
-        return NULL;
-    }
-    if (QRinput_append(input, mode, (int)size,
-                       (const unsigned char *)str) == 0) {
-        code = QRcode_encodeInput(input);
-    }
-    QRinput_free(input);
-
-    return code;
+    return qr_encode((const unsigned char *)str, size, version, level, mode,
+                     false, -1);
 }
 
+/* Encode the input as the best mix of modes, unless one is forced (-m) */
 QRcode *encode(const char *str, const size_t size, const int version,
                const QRecLevel level, const QRencodeMode mode)
 {
-    /* Binary data (with NUL bytes) can only be stored in 8-bit mode */
-    if (memchr(str, '\0', size) != NULL) {
-        if (mode != QR_MODE_8) {
-            return NULL;
-        }
-        return QRcode_encodeData((int)size, (const unsigned char *)str,
-                                 version, level);
-    }
-
-    /* QRcode_encodeString() picks the optimal mix of segment modes,
-       but only accepts 8-bit and Kanji as hints */
-    if (mode == QR_MODE_8 || mode == QR_MODE_KANJI) {
-        return QRcode_encodeString(str, version, level, mode, 1);
-    }
-
-    /* Force numeric or alphanumeric mode for the whole input */
-    return encode_as(str, size, version, level, mode);
+    return qr_encode((const unsigned char *)str, size, version, level, mode,
+                     mode == QR_MODE_8 || mode == QR_MODE_KANJI, -1);
 }
 
 /*****************************************************************************/
@@ -757,36 +1553,19 @@ done:
 /* QR code capacity                                                          */
 /*****************************************************************************/
 
-static bool fits(const int version, const QRecLevel level,
-                 const QRencodeMode mode, const size_t size)
-{
-    char *s = malloc(size + 1);
-    QRinput *input = QRinput_new2(version, level);
-    QRcode *code = NULL;
-    bool ok = false;
-
-    if (s != NULL && input != NULL) {
-        memset(s, mode == QR_MODE_AN ? 'A' : 'a', size);
-        if (QRinput_append(input, mode, (int)size, (unsigned char *)s) == 0 &&
-            (code = QRcode_encodeInput(input)) != NULL) {
-            ok = code->version == version;
-        }
-    }
-    QRcode_free(code);
-    QRinput_free(input);
-    free(s);
-    return ok;
-}
-
 /* How many characters (or bytes) fit into a QR code of the given version */
 size_t qr_capacity(const int version, const QRecLevel level,
                    const QRencodeMode mode)
 {
+    Segment seg = { mode, 0, 0 };
     size_t lo = 0, hi = 7089;  /* The most any QR code can hold */
 
     while (lo < hi) {
         const size_t mid = (lo + hi + 1) / 2;
-        if (fits(version, level, mode, mid)) {
+        size_t bits;
+        seg.length = mode == QR_MODE_KANJI ? mid * 2 : mid;
+        bits = segment_bits(&seg, version);
+        if (bits != 0 && bits <= (size_t)data_codewords(version, level) * 8) {
             lo = mid;
         } else {
             hi = mid - 1;
@@ -1858,7 +2637,7 @@ int print_frame(const Animation *anim, const Buffer *frame,
     if (code == NULL || (anim->version != 0 &&
                          code->version != anim->version)) {
         print_error("failed to generate QR code");
-        QRcode_free(code);
+        qrcode_free(code);
         return -1;
     }
     rows = print_qr(stdout, code, options->border, options->invert,
@@ -1866,7 +2645,7 @@ int print_frame(const Animation *anim, const Buffer *frame,
                     options->large ? (options->compact ? 2 : 4)
                                    : (options->compact ? 1 : 2),
                     options->large ? 2 : 1);
-    QRcode_free(code);
+    qrcode_free(code);
     if (rows < 0) {
         print_error("unable to write output");
     }
@@ -2195,7 +2974,7 @@ int main(int argc, char *argv[])
         ret = 1;
     }
 
-    QRcode_free(qr);
+    qrcode_free(qr);
 
 exit:
     free(stdin_buf);

@@ -25,7 +25,6 @@ jobs:
         sudo apt-get install autoconf \
           fonts-freefont-ttf \
           imagemagick \
-          libqrencode-dev \
           zbar-tools \
           zlib1g-dev
 

@@ -3,7 +3,6 @@ FROM alpine:3.22
 RUN apk update && \
     apk add --no-cache \
         build-base \
-        libqrencode-dev \
         zlib-dev
 
 COPY Makefile config.mk qr.c ./
