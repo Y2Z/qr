@@ -210,6 +210,31 @@ bytes, plain ASCII text is the safest choice.
 
 Scan with: [txqr-reader](https://github.com/divan/txqr-reader) (iOS).
 
+## Keeping data private
+
+QR Codes often carry secrets (keys, seeds, passwords, PSBTs), so `qr` makes
+sure that what it was given doesn't stay behind in memory:
+
+ - All memory it uses is zeroed before being freed or resized, including
+   while switching animation frames, and so is the part of the stack it used.
+   This covers the QR Code encoder (it's part of `qr`) and zlib's working
+   memory too.
+ - The data never goes through the C library's I/O buffers.
+ - When the data is given as an argument, it's erased from the command line,
+   so it doesn't show up in the list of running processes.
+ - Core dumps are disabled, and on Linux other processes can't attach to `qr`.
+ - Ctrl+C (and termination, hangup or a closed pipe) still wipes everything
+   on the way out, and animations are erased from the screen when they stop.
+
+Some things are beyond its reach:
+
+ - Nothing can be cleaned up after `kill -9`, a crash or a power loss, and
+   memory may have been written to swap or a hibernation file meanwhile.
+ - Your shell may keep arguments in its history: pass secrets through STDIN
+   instead, e.g. `qr < secret.txt`.
+ - Static QR Codes stay on the screen and in the terminal's scrollback until
+   cleared.
+
 ## How to remove
 
     # make uninstall

@@ -22,7 +22,102 @@
 #include <io.h>
 #include <windows.h>
 #include <shellapi.h>
+#else
+#include <sys/resource.h>
 #endif
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
+/*****************************************************************************/
+/* Memory wiping                                                             */
+/*****************************************************************************/
+
+/*
+ * The data may be secret (keys, seeds, passwords), so no copy of it is left
+ * behind in memory: every allocation remembers its size and is zeroed before
+ * it is freed or resized.  malloc(), calloc(), realloc() and free() are
+ * redirected to the functions below for the rest of this file.
+ */
+
+/* Calls through a volatile function pointer can't be optimized away */
+static void *(*const volatile memset_volatile)(void *, int, size_t) = memset;
+
+/* Zero memory in a way the compiler can't optimize away */
+static void wipe(void *ptr, const size_t size)
+{
+    if (ptr != NULL && size > 0) {
+        memset_volatile(ptr, 0, size);
+    }
+}
+
+/* Placed in front of every allocation; the union keeps the data aligned */
+typedef union {
+    size_t size;
+    long double align_ld;
+    long long align_ll;
+    void *align_ptr;
+} WipeHeader;
+
+static void *wipe_malloc(const size_t size)
+{
+    WipeHeader *header;
+
+    if (size > SIZE_MAX - sizeof(WipeHeader) ||
+        (header = malloc(sizeof(WipeHeader) + size)) == NULL) {
+        return NULL;
+    }
+    header->size = size;
+    return header + 1;
+}
+
+static void *wipe_calloc(const size_t count, const size_t size)
+{
+    void *ptr;
+
+    if (size > 0 && count > SIZE_MAX / size) {
+        return NULL;
+    }
+    if ((ptr = wipe_malloc(count * size)) != NULL) {
+        memset(ptr, 0, count * size);
+    }
+    return ptr;
+}
+
+static void wipe_free(void *ptr)
+{
+    WipeHeader *header;
+
+    if (ptr == NULL) {
+        return;
+    }
+    header = (WipeHeader *)ptr - 1;
+    wipe(header, sizeof(WipeHeader) + header->size);
+    free(header);
+}
+
+/* Unlike realloc(), never leaves the old contents behind */
+static void *wipe_realloc(void *ptr, const size_t size)
+{
+    size_t old_size;
+    void *new_ptr;
+
+    if (ptr == NULL) {
+        return wipe_malloc(size);
+    }
+    old_size = ((WipeHeader *)ptr - 1)->size;
+    if ((new_ptr = wipe_malloc(size)) == NULL) {
+        return NULL;
+    }
+    memcpy(new_ptr, ptr, old_size < size ? old_size : size);
+    wipe_free(ptr);
+    return new_ptr;
+}
+
+#define malloc(size)        wipe_malloc(size)
+#define calloc(count, size) wipe_calloc(count, size)
+#define realloc(ptr, size)  wipe_realloc(ptr, size)
+#define free(ptr)           wipe_free(ptr)
 
 /* Initial size of the buffer used for reading STDIN */
 #define STDIN_BUFSIZE 256
@@ -859,11 +954,9 @@ static QRcode *qr_encode(const unsigned char *data, const size_t size,
     return code;
 }
 
-/* Wipe the modules (they are the data, after all) before freeing */
 static void qrcode_free(QRcode *code)
 {
     if (code != NULL) {
-        memset(code->data, 0, (size_t)code->width * (size_t)code->width);
         free(code->data);
         free(code);
     }
@@ -987,6 +1080,31 @@ bool parse_int(const char *string, int min, int max, int *result)
     return true;
 }
 
+/* Growable byte buffer */
+typedef struct {
+    unsigned char *data;
+    size_t size;
+    size_t capacity;
+} Buffer;
+
+bool buffer_append(Buffer *buf, const void *data, const size_t size);
+
+static bool buffer_puts(Buffer *buf, const char *text)
+{
+    return buffer_append(buf, text, strlen(text));
+}
+
+/* Write the buffer to STDOUT in one go, then wipe it for reuse */
+static bool buffer_flush(Buffer *buf)
+{
+    const bool ok = fwrite(buf->data, 1, buf->size, stdout) == buf->size &&
+                    fflush(stdout) == 0;
+
+    wipe(buf->data, buf->capacity);
+    buf->size = 0;
+    return ok;
+}
+
 /*
  * Tell whether the quadrant-sized module at (x, y) of the bordered symbol is
  * filled.  Modules beyond the symbol (the unused half of the last row or
@@ -1013,24 +1131,25 @@ static inline bool is_filled(const QRcode *code, const int border,
 }
 
 /*
- * Print the QR code as text.  One module spans module_w x module_h
+ * Render the QR code as text.  One module spans module_w x module_h
  * quadrants: 2x1 (normal), 1x1 (compact), 4x2 (large), 2x2 (large compact).
+ * Returns the number of text rows, or -1 when out of memory.
  */
-/* Returns the number of text rows printed, or -1 on error */
-int print_qr(FILE *out, const QRcode *code, const int border,
-             const bool invert, const bool paint,
-             const int module_w, const int module_h)
+int render_qr(Buffer *out, const QRcode *code, const int border,
+              const bool invert, const bool paint,
+              const int module_w, const int module_h)
 {
     const int size = code->width + border * 2;
     const int cols = (size * module_w + 1) / 2;
     const int rows = (size * module_h + 1) / 2;
     int cx, cy, q;
+    bool ok = true;
 
     for (cy = 0; cy < rows; cy++) {
         bool reset_bg = false;
 
         if (paint) {
-            fputs(BGBK_FGWH, out);
+            ok = ok && buffer_puts(out, BGBK_FGWH);
         }
 
         for (cx = 0; cx < cols; cx++) {
@@ -1051,20 +1170,20 @@ int print_qr(FILE *out, const QRcode *code, const int border,
 
             /* Keep the part of the cell beyond the symbol transparent */
             if (paint && !invert && partial && !reset_bg) {
-                fputs(BG_DF, out);
+                ok = ok && buffer_puts(out, BG_DF);
                 reset_bg = true;
             }
 
-            fputs(glyphs[mask], out);
+            ok = ok && buffer_puts(out, glyphs[mask]);
         }
 
         if (paint) {
-            fputs(BGDF_FGDF, out);
+            ok = ok && buffer_puts(out, BGDF_FGDF);
         }
-        fputs(EOL, out);
+        ok = ok && buffer_puts(out, EOL);
     }
 
-    return ferror(out) ? -1 : rows;
+    return ok ? rows : -1;
 }
 
 QRencodeMode get_qr_encode_mode(const char *encode_mode)
@@ -1174,11 +1293,6 @@ typedef enum {
 #define ANIM_VERSION 10
 #define ANIM_FPS     4
 
-/* Growable byte buffer */
-typedef struct {
-    unsigned char *data;
-    size_t size;
-} Buffer;
 
 /* A series of frames (QR code contents) */
 typedef struct {
@@ -1223,12 +1337,20 @@ int get_data_type(const char *name)
 
 bool buffer_append(Buffer *buf, const void *data, const size_t size)
 {
-    unsigned char *tmp = realloc(buf->data, buf->size + size + 1);
+    /* Grow geometrically: every reallocation copies (and wipes) it all */
+    if (buf->size + size + 1 > buf->capacity) {
+        size_t capacity = buf->capacity > 0 ? buf->capacity : 64;
+        unsigned char *tmp;
 
-    if (tmp == NULL) {
-        return false;
+        while (capacity < buf->size + size + 1) {
+            capacity *= 2;
+        }
+        if ((tmp = realloc(buf->data, capacity)) == NULL) {
+            return false;
+        }
+        buf->data = tmp;
+        buf->capacity = capacity;
     }
-    buf->data = tmp;
     memcpy(buf->data + buf->size, data, size);
     buf->size += size;
     buf->data[buf->size] = '\0';
@@ -1258,7 +1380,7 @@ bool animation_add(Animation *anim, const void *data, const size_t size)
         return false;
     }
     anim->frames = tmp;
-    anim->frames[anim->count] = (Buffer){ NULL, 0 };
+    anim->frames[anim->count] = (Buffer){ NULL, 0, 0 };
     if (!buffer_append(&anim->frames[anim->count], data, size)) {
         return false;
     }
@@ -1403,14 +1525,30 @@ bool base64_decode(Buffer *out, const char *text, const size_t size)
     return true;
 }
 
+/* zlib's working memory holds the data too, so it gets wiped as well */
+static voidpf zlib_alloc(voidpf opaque, uInt items, uInt size)
+{
+    (void)opaque;
+    return calloc(items, size);
+}
+
+static void zlib_free(voidpf opaque, voidpf ptr)
+{
+    (void)opaque;
+    free(ptr);
+}
+
 /* Raw DEFLATE with a 1 KiB window, as required by BBQr */
 bool deflate_raw(Buffer *out, const unsigned char *data, const size_t size)
 {
     z_stream z;
     unsigned char chunk[4096];
     int status;
+    bool ok = false;
 
     memset(&z, 0, sizeof(z));
+    z.zalloc = zlib_alloc;
+    z.zfree = zlib_free;
     if (deflateInit2(&z, Z_BEST_COMPRESSION, Z_DEFLATED, -10, 8,
                      Z_DEFAULT_STRATEGY) != Z_OK) {
         return false;
@@ -1423,12 +1561,15 @@ bool deflate_raw(Buffer *out, const unsigned char *data, const size_t size)
         status = deflate(&z, Z_FINISH);
         if (status == Z_STREAM_ERROR ||
             !buffer_append(out, chunk, sizeof(chunk) - z.avail_out)) {
-            deflateEnd(&z);
-            return false;
+            goto done;
         }
     } while (status != Z_STREAM_END);
+    ok = true;
+
+done:
     deflateEnd(&z);
-    return true;
+    wipe(chunk, sizeof(chunk));
+    return ok;
 }
 
 /*****************************************************************************/
@@ -1492,13 +1633,13 @@ static bool is_psbt(const Buffer *buf)
 static void buffer_clear(Buffer *buf)
 {
     free(buf->data);
-    *buf = (Buffer){ NULL, 0 };
+    *buf = (Buffer){ NULL, 0, 0 };
 }
 
 bool prepare_data(Buffer *out, DataType *type, const char *input,
                   const size_t size)
 {
-    Buffer compact = { NULL, 0 };
+    Buffer compact = { NULL, 0, 0 };
     bool ok = false;
 
     if (!strip_whitespace(&compact, input, size)) {
@@ -1594,8 +1735,8 @@ bool bbqr_split(Animation *anim, const Format format, const DataType type,
 {
     static const char type_codes[] = "?PTJCUB";  /* Indexed by DataType */
     char encoding = format == FORMAT_BBQR_HEX ? 'H' : '2';
-    Buffer compressed = { NULL, 0 };
-    Buffer text = { NULL, 0 };
+    Buffer compressed = { NULL, 0, 0 };
+    Buffer text = { NULL, 0, 0 };
     size_t capacity, per_part, count, i;
     size_t align = 8;  /* Base32 parts must hold whole bytes */
     bool ok = false;
@@ -1643,16 +1784,20 @@ bool bbqr_split(Animation *anim, const Format format, const DataType type,
         const size_t offset = i * per_part;
         const size_t len = (text.size - offset < per_part) ? text.size - offset
                                                            : per_part;
-        char frame[BBQR_HEADER_LEN + 7089];
+        char header[BBQR_HEADER_LEN];
+        Buffer *frame;
 
-        frame[0] = 'B';
-        frame[1] = '$';
-        frame[2] = encoding;
-        frame[3] = type_codes[type];
-        base36_pair(frame + 4, count);
-        base36_pair(frame + 6, i);
-        memcpy(frame + BBQR_HEADER_LEN, text.data + offset, len);
-        if (!animation_add(anim, frame, BBQR_HEADER_LEN + len)) {
+        header[0] = 'B';
+        header[1] = '$';
+        header[2] = encoding;
+        header[3] = type_codes[type];
+        base36_pair(header + 4, count);
+        base36_pair(header + 6, i);
+        if (!animation_add(anim, header, BBQR_HEADER_LEN)) {
+            goto done;
+        }
+        frame = &anim->frames[anim->count - 1];
+        if (!buffer_append(frame, text.data + offset, len)) {
             goto done;
         }
     }
@@ -1982,7 +2127,7 @@ static bool ur_part(UREncoder *ur, const uint32_t seq_num, Buffer *out)
 {
     size_t *chosen = malloc(ur->seq_len * sizeof(size_t));
     unsigned char *mixed = calloc(ur->fragment_len, 1);
-    Buffer cbor = { NULL, 0 };
+    Buffer cbor = { NULL, 0, 0 };
     char seq[32];
     size_t count, i, j;
     bool ok = false;
@@ -2074,7 +2219,7 @@ bool ur_split(Animation *anim, const DataType type, const unsigned char *data,
 {
     UREncoder *ur = calloc(1, sizeof(UREncoder));
     size_t capacity, i;
-    Buffer text = { NULL, 0 };
+    Buffer text = { NULL, 0, 0 };
     bool ok = false;
 
     if (ur == NULL) {
@@ -2215,7 +2360,7 @@ bool numbered_split(Animation *anim, const Buffer *text,
     }
 
     for (i = 0, start = 0; i < count; i++, start = end) {
-        Buffer frame = { NULL, 0 };
+        Buffer frame = { NULL, 0, 0 };
         const int prefix_len = snprintf(prefix, sizeof(prefix), "p%luof%lu ",
                                         (unsigned long)(i + 1),
                                         (unsigned long)count);
@@ -2422,13 +2567,13 @@ bool txqr_split(Animation *anim, Buffer *text, const QRecLevel level)
     TXQREncoder *tx = calloc(1, sizeof(TXQREncoder));
     char header[64];
     size_t header_max, i;
-    Buffer frame = { NULL, 0 };
+    Buffer frame = { NULL, 0, 0 };
 
     if (tx == NULL) {
         return false;
     }
     tx->text = *text;
-    *text = (Buffer){ NULL, 0 };
+    *text = (Buffer){ NULL, 0, 0 };
     anim->mode = QR_MODE_8;
 
     /* Leave room for the longest header: "999999/<chunk_len>/<total>|" */
@@ -2554,11 +2699,15 @@ static bool setup_terminal(void)
 /*
  * The C runtime converts arguments to the ANSI code page, which turns every
  * character missing from it into "?": take them from the UTF-16 command line
- * instead, converted to UTF-8.
+ * instead, converted to UTF-8.  Every other copy of the command line gets
+ * wiped, as it may hold the data.
  */
-static char **utf8_arguments(int *argc)
+static char **utf8_arguments(int *argc, char **crt_argv)
 {
-    LPWSTR *wide = CommandLineToArgvW(GetCommandLineW(), argc);
+    LPWSTR command_line = GetCommandLineW();
+    LPSTR ansi_command_line = GetCommandLineA();
+    const int crt_argc = *argc;
+    LPWSTR *wide = CommandLineToArgvW(command_line, argc);
     char **argv = NULL;
     int i, size;
 
@@ -2579,45 +2728,103 @@ static char **utf8_arguments(int *argc)
         WideCharToMultiByte(CP_UTF8, 0, wide[i], -1, argv[i], size, NULL, NULL);
     }
 
+    for (i = 0; i < crt_argc; i++) {
+        wipe(crt_argv[i], strlen(crt_argv[i]));
+    }
+    wipe(command_line, wcslen(command_line) * sizeof(WCHAR));
+    wipe(ansi_command_line, strlen(ansi_command_line));
+
 done:
-    LocalFree(wide);
+    if (wide != NULL) {
+        for (i = 0; i < *argc; i++) {
+            wipe(wide[i], wcslen(wide[i]) * sizeof(WCHAR));
+        }
+        LocalFree(wide);
+    }
     return argv;
+}
+
+static void free_arguments(int argc, char **argv)
+{
+    int i;
+
+    for (i = 0; i < argc; i++) {
+        free(argv[i]);
+    }
+    free(argv);
 }
 #endif
 
-static volatile sig_atomic_t stop_playback = 0;
+/* Set when asked to stop (Ctrl+C), so that memory gets wiped on the way out */
+static volatile sig_atomic_t interrupted = 0;
 
 static void on_signal(int signum)
 {
     (void)signum;
-    stop_playback = 1;
+    interrupted = 1;
 }
 
-/* Stop playback on Ctrl+C instead of exiting, so the cursor gets restored */
 static void catch_signals(void)
 {
 #ifdef _WIN32
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
+    signal(SIGBREAK, on_signal);  /* Ctrl+Break */
 #else
+    const int signals[] = { SIGINT, SIGTERM, SIGHUP, SIGQUIT };
     struct sigaction action;
+    size_t i;
 
+    /* No SA_RESTART: interrupt a pending read() rather than wait for it */
     memset(&action, 0, sizeof(action));
     action.sa_handler = on_signal;
-    sigaction(SIGINT, &action, NULL);
-    sigaction(SIGTERM, &action, NULL);
+    for (i = 0; i < sizeof(signals) / sizeof(signals[0]); i++) {
+        sigaction(signals[i], &action, NULL);
+    }
+    /* A closed pipe makes writing fail, instead of killing the process */
+    action.sa_handler = SIG_IGN;
+    sigaction(SIGPIPE, &action, NULL);
 #endif
 }
+
+/* Keep the data out of core dumps, and (on Linux) out of reach of debuggers */
+static void protect_process(void)
+{
+#ifndef _WIN32
+    const struct rlimit no_core = { 0, 0 };
+
+    setrlimit(RLIMIT_CORE, &no_core);
+#endif
+#ifdef __linux__
+    prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#endif
+}
+
+/* Overwrite the part of the stack that functions called by main() used */
+static void scrub_stack_now(void)
+{
+    unsigned char stack[64 * 1024];
+
+    wipe(stack, sizeof(stack));
+}
+
+/* Called through a volatile pointer, so that it can't be inlined into main() */
+static void (*const volatile scrub_stack)(void) = scrub_stack_now;
 
 /* Wait for the given number of nanoseconds, or until interrupted */
 static void wait_ns(const long ns)
 {
 #ifdef _WIN32
-    Sleep((DWORD)(ns / 1000000L));
+    long ms = ns / 1000000L;
+
+    /* Ctrl+C is handled in another thread, so check on it now and then */
+    for (; ms > 0 && !interrupted; ms -= 50) {
+        Sleep((DWORD)(ms < 50 ? ms : 50));
+    }
 #else
     struct timespec delay = { ns / 1000000000L, ns % 1000000000L };
 
-    while (nanosleep(&delay, &delay) != 0 && !stop_playback) {
+    while (nanosleep(&delay, &delay) != 0 && !interrupted) {
     }
 #endif
 }
@@ -2626,9 +2833,9 @@ static void wait_ns(const long ns)
 /* Playback                                                                  */
 /*****************************************************************************/
 
-/* Returns the number of text rows printed, or -1 on error */
-int print_frame(const Animation *anim, const Buffer *frame,
-                const Options *options)
+/* Render a frame into `out`; returns its number of text rows, or -1 */
+int render_frame(Buffer *out, const Animation *anim, const Buffer *frame,
+                 const Options *options)
 {
     QRcode *code = encode_as((const char *)frame->data, frame->size,
                              anim->version, options->ec_level, anim->mode);
@@ -2640,14 +2847,14 @@ int print_frame(const Animation *anim, const Buffer *frame,
         qrcode_free(code);
         return -1;
     }
-    rows = print_qr(stdout, code, options->border, options->invert,
-                    !options->plain,
-                    options->large ? (options->compact ? 2 : 4)
-                                   : (options->compact ? 1 : 2),
-                    options->large ? 2 : 1);
+    rows = render_qr(out, code, options->border, options->invert,
+                     !options->plain,
+                     options->large ? (options->compact ? 2 : 4)
+                                    : (options->compact ? 1 : 2),
+                     options->large ? 2 : 1);
     qrcode_free(code);
     if (rows < 0) {
-        print_error("unable to write output");
+        print_error("out of memory");
     }
     return rows;
 }
@@ -2659,6 +2866,8 @@ static const Buffer *get_frame(const Animation *anim, const size_t index,
     if (index < anim->count || anim->more == NULL) {
         return &anim->frames[index % anim->count];
     }
+    /* Don't let the previous frame linger in the unused part */
+    wipe(extra->data, extra->capacity);
     extra->size = 0;
     return anim->more(anim->ctx, index, extra) ? extra : NULL;
 }
@@ -2675,52 +2884,61 @@ int play(const Animation *anim, const Options *options, const size_t count,
     const bool loop = !options->raw && terminal &&
                       (anim->count > 1 || count > 1);
     const size_t total = count > 0 ? count : loop ? 0 : anim->count;
-    Buffer extra = { NULL, 0 };
+    Buffer extra = { NULL, 0, 0 };
+    Buffer out = { NULL, 0, 0 };
+    char move[32];
     size_t i;
     int rows = 0;
+    bool ok = true;
 
     if (loop) {
-        catch_signals();
         fputs("\x1b[?25l", stdout);  /* Hide cursor */
     }
 
-    for (i = 0; (total == 0 || i < total) && !stop_playback; i++) {
+    for (i = 0; (total == 0 || i < total) && !interrupted && ok; i++) {
         const Buffer *frame = get_frame(anim, i, &extra);
 
         if (frame == NULL) {
             print_error("out of memory");
-            rows = -1;
+            ok = false;
             break;
         }
 
         if (options->raw) {
-            fwrite(frame->data, 1, frame->size, stdout);
-            fputs(EOL, stdout);
+            ok = buffer_append(&out, frame->data, frame->size) &&
+                 buffer_puts(&out, EOL) && buffer_flush(&out);
             continue;
         }
 
         if (loop && rows > 0) {
-            printf("\x1b[%dA", rows);  /* Move back up to redraw */
+            snprintf(move, sizeof(move), "\x1b[%dA", rows);  /* Redraw */
+            ok = buffer_puts(&out, move);
         } else if (!loop && i > 0) {
-            fputs(EOL, stdout);
+            ok = buffer_puts(&out, EOL);
         }
-        if ((rows = print_frame(anim, frame, options)) < 0) {
+        if (!ok || (rows = render_frame(&out, anim, frame, options)) < 0 ||
+            !buffer_flush(&out)) {
+            ok = false;
             break;
         }
 
         if (loop) {
-            fflush(stdout);
             wait_ns(frame_ns);
         }
     }
-    free(extra.data);
 
     if (loop) {
+        /* Erase the last frame, rather than leave it on the screen */
+        if (rows > 0) {
+            printf("\x1b[%dA\x1b[J", rows);
+        }
         fputs("\x1b[?25h", stdout);  /* Show cursor */
     }
     fflush(stdout);
+    free(extra.data);
+    free(out.data);
 
-    return (rows < 0 || ferror(stdout)) ? 1 : 0;
+    return (!ok || ferror(stdout)) ? 1 : 0;
 }
 
 int main(int argc, char *argv[])
@@ -2728,12 +2946,21 @@ int main(int argc, char *argv[])
     int ret = 0;
     const char *str = NULL;  /* Input data */
     size_t str_size = 0;     /* Input data length (it may contain NUL bytes) */
-    char *stdin_buf = NULL;  /* Owns the input when it comes from STDIN */
+    char *input_buf = NULL;  /* Owns the input */
     int c = 0;
     const bool terminal = setup_terminal();
 
+    /* Keep the data private, and wipe it even when interrupted */
+    protect_process();
+    catch_signals();
+
+    /* No stdio buffers: they would keep copies of the data that can't be
+       wiped (output is written a whole QR code at a time instead) */
+    setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+
 #ifdef _WIN32
-    if ((argv = utf8_arguments(&argc)) == NULL) {
+    if ((argv = utf8_arguments(&argc, argv)) == NULL) {
         print_error("unable to read arguments");
         return 1;
     }
@@ -2768,8 +2995,18 @@ int main(int argc, char *argv[])
                 ret = 1;
                 goto exit;
             }
-            str = argv[optind++];
-            str_size = strlen(str);
+            /* Take the data out of argv, which also removes it from the
+               list of running processes (on Linux and BSD) */
+            str_size = strlen(argv[optind]);
+            if ((input_buf = malloc(str_size + 1)) == NULL) {
+                print_error("out of memory");
+                ret = 1;
+                goto exit;
+            }
+            memcpy(input_buf, argv[optind], str_size + 1);
+            wipe(argv[optind], str_size);
+            str = input_buf;
+            optind++;
             continue;
         }
 
@@ -2874,11 +3111,18 @@ int main(int argc, char *argv[])
 
     /* Read input from STDIN only if no STRING was given */
     if (str == NULL && !isatty(STDIN_FILENO)) {
-        if ((str = stdin_buf = read_stream(stdin, &str_size)) == NULL) {
-            print_error("unable to read from STDIN");
-            ret = 1;
+        if ((str = input_buf = read_stream(stdin, &str_size)) == NULL) {
+            if (!interrupted) {
+                print_error("unable to read from STDIN");
+            }
+            ret = interrupted ? 130 : 1;
             goto exit;
         }
+    }
+
+    if (interrupted) {
+        ret = 130;
+        goto exit;
     }
 
     /* Check input */
@@ -2904,14 +3148,14 @@ int main(int argc, char *argv[])
             .version = version_set ? options.version : ANIM_VERSION,
         };
         DataType type = (DataType)options.data_type;
-        Buffer data = { NULL, 0 };
+        Buffer data = { NULL, 0, 0 };
         bool ok = prepare_data(&data, &type, str, str_size);
 
         if (ok && options.format == FORMAT_UR) {
             ok = ur_split(&anim, type, data.data, data.size, options.ec_level);
         } else if (ok && (options.format == FORMAT_NUMBERED ||
                           options.format == FORMAT_TXQR)) {
-            Buffer text = { NULL, 0 };
+            Buffer text = { NULL, 0, 0 };
             ok = to_text(&text, type, data.data, data.size) &&
                  (options.format == FORMAT_TXQR
                   ? txqr_split(&anim, &text, options.ec_level)
@@ -2966,18 +3210,27 @@ int main(int argc, char *argv[])
     }
 
     /* Output QR code as text */
-    if (print_qr(stdout, qr, options.border, options.invert, !options.plain,
-                 options.large ? (options.compact ? 2 : 4)
-                               : (options.compact ? 1 : 2),
-                 options.large ? 2 : 1) < 0) {
+    Buffer out = { NULL, 0, 0 };
+    if (render_qr(&out, qr, options.border, options.invert, !options.plain,
+                  options.large ? (options.compact ? 2 : 4)
+                                : (options.compact ? 1 : 2),
+                  options.large ? 2 : 1) < 0) {
+        print_error("out of memory");
+        ret = 1;
+    } else if (!buffer_flush(&out)) {
         print_error("unable to write output");
         ret = 1;
     }
 
+    free(out.data);
     qrcode_free(qr);
 
 exit:
-    free(stdin_buf);
+    free(input_buf);
+#ifdef _WIN32
+    free_arguments(argc, argv);
+#endif
+    scrub_stack();
     return ret;
 
 invalid_options:
