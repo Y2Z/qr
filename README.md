@@ -4,64 +4,9 @@
 [![macOS](https://github.com/Y2Z/qr/actions/workflows/ci-macos.yml/badge.svg?branch=master)](https://github.com/Y2Z/qr/actions/workflows/ci-macos.yml)
 [![Windows](https://github.com/Y2Z/qr/actions/workflows/ci-windows.yml/badge.svg?branch=master)](https://github.com/Y2Z/qr/actions/workflows/ci-windows.yml)
 
-Print Unicode-friendly QR Codes® straight in your terminal!
+Print (animated) QR codes straight in your terminal
 
-![qr-screencast](https://user-images.githubusercontent.com/1392048/47276020-47b04800-d582-11e8-9da0-b09d0c949720.gif)
-
-
-## Download
-
-Every [release](https://github.com/Y2Z/qr/releases) comes with standalone
-binaries:
-
- - `qr.exe` for Windows (x86_64)
- - `qr-linux-x86_64.tar.gz` and `qr-linux-arm64.tar.gz` for Linux, each
-   containing a statically linked `qr` that runs on any distribution
-
-They have [zlib](https://zlib.net) built in.
-
-
-## How to build
-
-    $ make
-
-<details>
-    <summary><strong>Build dependencies</strong></summary>
-    <br />
-
- - [zlib](https://zlib.net) (the QR Code encoder is built in)
-   ###### Resolve on Ubuntu or Debian
-       $ apt-get install zlib1g-dev
-   ###### Resolve on macOS
-       Nothing to do: zlib comes with the system
-   ###### Resolve on Windows (in an [MSYS2](https://www.msys2.org) UCRT64 shell)
-       $ pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-zlib
-       $ make CC=gcc
-
-</details>
-
-
-## How to install
-
-    # make install
-or
-
-    $ sudo PREFIX=/usr/local make install
-
-
-## How to build and install using containers
-
-    $ docker build -t y2z/qr .
-    $ sudo install -b utils/qr.sh /usr/local/bin/qr
-
-
-## How to build and install on FreeBSD
-
-    $ pkg install qr
-or
-
-    $ cd /usr/ports/textproc/qr/
-    $ make install clean
+![qr-animation](assets/animation.png)
 
 
 ## Usage
@@ -234,6 +179,59 @@ Some things are beyond its reach:
    instead, e.g. `qr < secret.txt`.
  - Static QR Codes stay on the screen and in the terminal's scrollback until
    cleared.
+
+
+## How to install
+
+    # make install
+or
+
+    $ sudo PREFIX=/usr/local make install
+
+#### Download
+
+Every [release](https://github.com/Y2Z/qr/releases) comes with standalone
+binaries:
+
+ - `qr-linux-x86_64.tar.gz` and `qr-linux-arm64.tar.gz` for Linux, each
+   containing a statically linked `qr` that runs on any distribution
+ - `qr.exe` for Windows (x86_64)
+
+They have [zlib](https://zlib.net) built in.
+
+#### Build
+
+    $ make
+
+<details>
+    <summary><strong>Build dependencies</strong></summary>
+    <br />
+
+ - [zlib](https://zlib.net) (the QR Code encoder is built in)
+   ###### Resolve on Ubuntu or Debian
+       $ apt-get install zlib1g-dev
+   ###### Resolve on macOS
+       Nothing to do: zlib comes with the system
+   ###### Resolve on Windows (in an [MSYS2](https://www.msys2.org) UCRT64 shell)
+       $ pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-zlib
+       $ make CC=gcc
+
+</details>
+
+#### How to build and install using containers
+
+    $ docker build -t y2z/qr .
+    $ sudo install -b utils/qr.sh /usr/local/bin/qr
+
+#### How to build and install on FreeBSD
+
+    $ pkg install qr
+or
+
+    $ cd /usr/ports/textproc/qr/
+    $ make install clean
+
+
 
 ## How to remove
 
